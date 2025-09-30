@@ -1,0 +1,48 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15
+    container_name: benpo_siata_postgres
+    environment:
+      POSTGRES_DB: benpo_siata_db
+      POSTGRES_USER: benpo_siata_user
+      POSTGRES_PASSWORD: benpo_siata_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U benpo_siata_user -d benpo_siata_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: ./backend
+    container_name: benpo_siata_backend
+    environment:
+      DATABASE_URL: postgresql://benpo_siata_user:benpo_siata_password@postgres:5432/benpo_siata_db
+      FLASK_ENV: development
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./backend:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: python app.py
+
+  frontend:
+    build: ./frontend
+    container_name: benpo_siata_frontend
+    ports:
+      - "80:80"
+    volumes:
+      - ./frontend:/usr/share/nginx/html
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
