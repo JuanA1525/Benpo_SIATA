@@ -1,91 +1,46 @@
-## Endpoints añadidos / actualizados
-
-Base URL: `http://localhost:5000/api`
-
-| Endpoint | Método | Descripción |
-|----------|--------|-------------|
-| `/forecasts` | GET | Pronósticos por zona desde BD |
-| `/forecasts/<zona>` | GET | Pronóstico detallado de una zona |
-| `/stations` | GET | Listado estaciones activas |
-| `/stations/all-data` | GET | Última medición de todas las estaciones (formato compatible con frontend) |
-| `/stations/<id>/data` | GET | Última medición de una estación |
-| `/stations/<id>/history` | GET | Histórico (params: `hours_back` o `start_date`, `end_date`) |
-| `/heatmap` | GET | Puntos agregados para heatmap (`parameter`, `start_date`, `end_date`, `hours_back`, `agg`) |
-| `/heatmap/interpolate` | GET | Grilla interpolada (requiere SciPy) |
-
-Parámetros válidos para `parameter`: `temperature`, `humidity`, `pressure`, `wind_speed`, `precipitation`.
-
-## Scheduler / ETL
-
-El ETL se ejecuta cada 10 minutos mediante APScheduler y realiza:
-1. Recolección de pronósticos WRF (tabla `pronosticos`).
-2. Actualización de metadatos de estaciones (tabla `estaciones`).
-3. Recolección de mediciones recientes filtrando:
-   - Diferencia horaria > 24h => estación inactiva (no se guarda nueva medición)
-   - Diferencia 2–24h => se ignoran mediciones antiguas
-   - Valores -999 / outliers (< -900) => se tratan como NULL
-
-Para deshabilitar el scheduler en desarrollo (evitar duplicado con auto-reload):
-
-```
-export DISABLE_SCHEDULER=1  # (Linux/macOS)
-set DISABLE_SCHEDULER=1     # (Windows CMD)
-```
-
-## Plan de despliegue AWS (resumen)
-
-1. Construir imágenes Docker con etiquetas versionadas.
-2. Subir a Amazon ECR.
-3. Provisionar en ECS Fargate o EC2:
-   - Servicio `postgres` recomendado migrar a RDS (PostgreSQL).
-   - Servicio `backend` (Flask + ETL scheduler) – variable `DATABASE_URL` apuntando a RDS.
-   - Servicio `frontend` servido por Nginx (o migrar a S3 + CloudFront).
-4. Programar tareas ETL dedicadas (opcional) usando AWS EventBridge + AWS ECS task si se quisiera desacoplar del backend web.
-5. Observabilidad: CloudWatch Logs + métricas custom (pendiente de instrumentar).
-
-Ver sección más abajo (Infraestructura) para detalle completo por fases.
-
-# 🌦️ SIATA Dashboard - Benpo
-
-Sistema moderno de visualización de datos meteorológicos del SIATA (Sistema de Alerta Temprana del Valle de Aburrá).
-
-## ✨ Características
-
-### 🎯 Funcionalidades Principales
-
-- **📊 Pronósticos por Zonas**: Selector interactivo tipo SIATA con iconos dinámicos para probabilidades de lluvia
-- **🗺️ Mapa de Estaciones**: Visualización interactiva de todas las estaciones meteorológicas
-- **🔥 Heatmaps**: Mapas de calor de temperatura y humedad con controles intuitivos
-- **📱 Diseño Responsivo**: Interfaz moderna que se adapta a todos los dispositivos
-
-### 🌡️ Pronósticos Inteligentes
-
-- **Iconos Dinámicos**: 🌧️ (Alta), 🌦️ (Media), 🌤️ (Baja probabilidad)
-- **Temperaturas**: Máximas y mínimas con iconos 🌡️ y ❄️
-- **Datos Horarios**: Precipitación detallada por horas
-- **Actualizaciones**: Datos en tiempo real del SIATA
-
-### 🗺️ Mapa Interactivo
-
-- **Estaciones**: Marcadores personalizados con información completa
-- **Heatmap de Temperatura**: Por defecto al cargar
-- **Heatmap de Humedad**: Intercambiable con un clic
-- **Popups Informativos**: Datos completos de cada estación
-
-## 🚀 Tecnologías
-
-### Backend
-
-- **Flask**: Framework web Python
-- **PostgreSQL**: Base de datos robusta
 <div align="center">
 
-# 🌦️ Benpo SIATA Dashboard
-**Plataforma integral para ingestión, limpieza, almacenamiento y visualización interactiva de datos meteorológicos (pronósticos + observaciones de estaciones SIATA) del Valle de Aburrá.**
+# 🌦️ SIATA Dashboard - Benpo
+**Visualización y análisis de datos meteorológicos (pronósticos + observaciones de estaciones SIATA) para el Valle de Aburrá.**
 
 ![Estado](https://img.shields.io/badge/status-activo-success) ![Stack](https://img.shields.io/badge/stack-Flask%20|%20PostgreSQL%20|%20Leaflet-green) ![License](https://img.shields.io/badge/uso-académico-lightgrey)
 
 </div>
+
+## ✨ Características Principales (Resumen Rápido)
+| Tipo | Descripción |
+|------|------------|
+| Pronósticos | Vista interactiva multi-zona (13 zonas WRF) con temperaturas y segmentos de lluvia |
+| Estaciones | Marcadores dinámicos con tooltips y estado de datos recientes |
+| Heatmaps | Parámetro seleccionable, agregación (mean/max/min), interpolación opcional SciPy |
+| Histórico | Panel lateral filtrable (horas o rango), métricas múltiples, agregación por intervalos |
+| Calidad | Limpieza -999, control de frescura, prevención de duplicados |
+| UI/UX | Tema verde accesible, leyendas dinámicas, ayuda contextual, toasts y loader |
+
+---
+
+## 1. Resumen Ejecutivo
+Plataforma modular que ingesta datos SIATA, los normaliza y expone vía API REST para una interfaz geoespacial y temporal. Incluye interpolación espacial y agregación temporal cliente, preparada para ampliaciones (alertas, métricas derivadas, exportaciones).
+
+## 2. Objetivos
+1. Integrar pronósticos y mediciones en un modelo consistente.
+2. Entregar visualización rápida y configurable (mapa + heatmaps + histórico).
+3. Garantizar que sólo datos limpios y recientes impulsen el análisis.
+4. Servir de base extensible para analítica futura.
+
+## 3. Arquitectura Lógica
+```mermaid
+flowchart LR
+  subgraph SIATA[Fuentes SIATA]
+    A[WRF zona JSON] --> ETL
+    B[Metadatos estaciones] --> ETL
+    C[Mediciones estación JSON] --> ETL
+  end
+  ETL[[Scheduler ETL (APScheduler)]] --> DB[(PostgreSQL)]
+  DB --> API[(Flask API)]
+  API --> UI[Frontend Web (Leaflet + JS)]
+  UI --> Usuario[Usuario Final]
+```
 
 ## 1. Resumen Ejecutivo
 Este sistema consolida datos externos (pronósticos WRF y mediciones de estaciones SIATA), los normaliza y los expone mediante una API REST y una interfaz web interactiva con mapas, heatmaps interpolados y análisis histórico por estación. Está diseñado para ser extensible, transparente y fácil de desplegar (Docker / contenedores).
@@ -96,21 +51,7 @@ Este sistema consolida datos externos (pronósticos WRF y mediciones de estacion
 3. Asegurar calidad de datos: limpieza de valores centinela, control de frescura y de duplicados.
 4. Proveer una API clara reutilizable para futuras integraciones (p.ej. analítica avanzada o alertas).
 
-## 3. Arquitectura Lógica
-```mermaid
-flowchart LR
-  subgraph SIATA[SIATA Fuentes Externas]
-    A[WRF JSON zona] -->|Pronósticos| ETL
-    B[JSON estación] -->|Metadatos| ETL
-    C[JSON medición estación] -->|Variables t,h,p,ws,wd, lluvia| ETL
-  end
-  ETL[[ETL Scheduler\n(APScheduler)]] --> DB[(PostgreSQL)]
-  DB --> API[(Flask API)]
-  API --> UI[Frontend Web\n(Leaflet + JS)]
-  UI --> Usuario[Usuario Final]
-```
-
-### Flujo de Datos (resumen)
+### Flujo de Datos
 1. Scheduler (cada 10 min) invoca recolectores.
 2. Datos crudos se limpian (-999 → NULL) y se filtra obsolescencia (>2h advertido, >24h descartado).
 3. Inserciones idempotentes (verificación por timestamp/estación) evitan duplicados.
@@ -297,6 +238,21 @@ curl "http://localhost:5000/api/heatmap/interpolate?parameter=humidity&agg=mean&
 Proyecto académico orientado a análisis ambiental del Valle de Aburrá. Uso interno / educativo. Añadir licencia formal si se abre al público.
 
 ## 23. Créditos
+
+## 24. Apéndice: Tabla Rápida de Endpoints
+| Endpoint | Método | Descripción Breve |
+|----------|--------|-------------------|
+| `/forecasts` | GET | Pronósticos agrupados |
+| `/forecasts/<zona>` | GET | Pronóstico zona específica |
+| `/stations` | GET | Estaciones activas |
+| `/stations/all-data` | GET | Últimas mediciones todas |
+| `/stations/<id>/data` | GET | Última medición estación |
+| `/stations/<id>/history` | GET | Histórico filtrable |
+| `/heatmap` | GET | Puntos agregados heatmap |
+| `/heatmap/interpolate` | GET | Interpolación espacial |
+| `/health` | GET | Salud del servicio |
+
+> Parámetros clave: `parameter` (temperature|humidity|pressure|wind_speed|precipitation), `agg` (mean|max|min), `hours_back` o `start_date`/`end_date`.
 - Datos: SIATA (Sistema de Alerta Temprana del Valle de Aburrá)
 - Desarrollo: Benpo SIATA Dashboard
 
