@@ -74,6 +74,13 @@ class MapManager {
                     <label class="checkbox-inline">
                         <input id="hm-toggle-markers" type="checkbox" checked /> Marcadores
                     </label>
+                    <label>Método
+                        <select id="hm-method" class="input-select">
+                            <option value="grid" selected>Grid</option>
+                            <option value="poly2">Polinomio 2º</option>
+                            <option value="poly3">Polinomio 3º</option>
+                        </select>
+                    </label>
                 </div>
                 <div class="action-row">
                     <button class="generate-btn" onclick="mapManager.generateAdvancedHeatmap()">Generar Heatmap</button>
@@ -199,6 +206,7 @@ class MapManager {
             const startDate = document.getElementById('hm-start-date').value;
             const endDate = document.getElementById('hm-end-date').value;
             const interpolate = document.getElementById('hm-interpolate').checked;
+            const method = document.getElementById('hm-method').value;
             const showMarkers = document.getElementById('hm-toggle-markers').checked;
             if (!showMarkers) this.clearMarkers(); else if (this.markers.length===0) this.addStationsToMap();
             this.showHeatmapMessage('Generando...');
@@ -206,7 +214,7 @@ class MapManager {
             const qs = new URLSearchParams();
             qs.append('parameter', parameter); qs.append('agg', agg);
             if (hoursBack) qs.append('hours_back', hoursBack); else { if (startDate) qs.append('start_date', startDate); if (endDate) qs.append('end_date', endDate);}
-            const endpoint = interpolate ? `/api/heatmap/interpolate?${qs.toString()}&grid_size=55` : `/api/heatmap?${qs.toString()}`;
+            const endpoint = interpolate ? `/api/heatmap/interpolate?${qs.toString()}&grid_size=55&method=${method}` : `/api/heatmap?${qs.toString()}`;
             const resp = await fetch(endpoint);
             if (!resp.ok) throw new Error('HTTP '+resp.status);
             const json = await resp.json();
@@ -215,10 +223,15 @@ class MapManager {
             if (points.length === 0) { this.showHeatmapMessage('Sin puntos'); return; }
             this.currentRawPoints = points;
             const values = points.map(p=>p.value).filter(v=>typeof v==='number');
-            const min = Math.min(...values), max = Math.max(...values);
-            const layerData = points.map(p=>[p.latitude, p.longitude, this.minMaxNormalize(p.value, min, max)]);
-            this.renderHeatLayer(layerData, parameter, {min, max, dynamicLegend:true});
-            this.updateMetaInfo({parameter, agg, count: points.length, min, max, interpolate});
+            const stats = json.stats || this.computeStats(values);
+            const min = stats.min, max = stats.max;
+            const norm = (v)=>{
+                if(max===min) return .5; const nv=(v-min)/(max-min); // estirar un poco altas intensidades
+                return Math.pow(Math.min(1, Math.max(0,nv)), 0.8); // realce leve altas
+            };
+            const layerData = points.map(p=>[p.latitude, p.longitude, norm(p.value)]);
+            this.renderHeatLayer(layerData, parameter, {min, max, dynamicLegend:true, stats});
+            this.updateMetaInfo({parameter, agg, count: points.length, min, max, interpolate, method});
         } catch (e) {
             console.error(e);
             this.showHeatmapMessage('Error generando heatmap');
@@ -229,9 +242,11 @@ class MapManager {
         this.lastHeatmapMeta = meta;
         const el = document.getElementById('hm-meta');
         if (!el) return; el.style.display='block';
-        el.innerHTML = `<div><strong>${this.prettyParam(meta.parameter)}</strong> (${meta.agg}) ${meta.interpolate? '• Interpolado':''}</div>
-                        <div>Puntos: ${meta.count}</div>
-                        <div>Rango: ${meta.min.toFixed(2)} – ${meta.max.toFixed(2)} ${this.getUnits(meta.parameter)}</div>`;
+    const methodLabel = meta.method==='poly2' ? 'Polinomio 2º' : meta.method==='poly3' ? 'Polinomio 3º' : 'Grid';
+    const extra = meta.method? ` • ${methodLabel}`:'';
+    el.innerHTML = `<div><strong>${this.prettyParam(meta.parameter)}</strong> (${meta.agg}) ${meta.interpolate? '• Interpolado':''}${extra}</div>
+            <div>Puntos: ${meta.count}</div>
+            <div>Rango: ${meta.min.toFixed(2)} – ${meta.max.toFixed(2)} ${this.getUnits(meta.parameter)}</div>`;
     }
 
     minMaxNormalize(v,min,max){ if(max===min) return .5; return (v-min)/(max-min); }
@@ -268,11 +283,18 @@ class MapManager {
     renderHeatLayer(data,type,opts={}){
         if(typeof L.heatLayer !== 'function'){ this.showHeatmapMessage('Leaflet.heat no disponible'); return; }
         this.clearHeatmap();
-        this.heatmapLayer = L.heatLayer(data, { radius: this.interpolated? 30:45, blur: 28, maxZoom: 15, gradient: this.getHeatmapGradient(type)}).addTo(this.map);
-        if(opts.dynamicLegend){ this.showDynamicLegend(type, opts.min, opts.max); }
+    this.heatmapLayer = L.heatLayer(data, { radius: this.interpolated? 30:45, blur: 26, maxZoom: 15, gradient: this.getHeatmapGradient(type)}).addTo(this.map);
+    if(opts.dynamicLegend){ this.showDynamicLegend(type, opts.min, opts.max, {stats: opts.stats}); }
     }
 
-    showDynamicLegend(type,min,max){
+    computeStats(values){
+        if(!values || !values.length) return {min:0,max:1,q25:0.25,q50:0.5,q75:0.75,q90:0.9};
+        const arr=[...values].sort((a,b)=>a-b);
+        const q=p=>{ const i=(arr.length-1)*p; const lo=Math.floor(i), hi=Math.ceil(i); if(lo===hi) return arr[lo]; return arr[lo]+(arr[hi]-arr[lo])*(i-lo); };
+        return {min:arr[0], max:arr[arr.length-1], q25:q(.25), q50:q(.5), q75:q(.75), q90:q(.9)};
+    }
+
+    showDynamicLegend(type,min,max,extra){
         const legend=document.getElementById('heatmap-legend'); if(!legend) return; legend.style.display='block';
         if(min==null||max==null){
             switch(type){
@@ -285,8 +307,15 @@ class MapManager {
         }
         const gradient=this.getHeatmapGradient(type); const colors=Object.values(gradient);
          legend.querySelector('.legend-gradient').style.background=`linear-gradient(to right, ${colors.join(', ')})`;
-        legend.querySelector('.legend-min').textContent=`${min.toFixed(1)} ${this.getUnits(type)}`;
-        legend.querySelector('.legend-max').textContent=`${max.toFixed(1)} ${this.getUnits(type)}`;
+        const units=this.getUnits(type);
+        const stats = extra && extra.stats ? extra.stats : extra;
+        if(stats && stats.q25!=null){
+            legend.querySelector('.legend-min').innerHTML=`${min.toFixed(1)}${units}<br><small>P25: ${stats.q25.toFixed(1)}</small>`;
+            legend.querySelector('.legend-max').innerHTML=`<small>P75: ${stats.q75.toFixed(1)} | P90: ${stats.q90.toFixed(1)}</small><br>${max.toFixed(1)}${units}`;
+        } else {
+            legend.querySelector('.legend-min').textContent=`${min.toFixed(1)} ${units}`;
+            legend.querySelector('.legend-max').textContent=`${max.toFixed(1)} ${units}`;
+        }
     }
 
     getUnits(type){ return {temperature:'°C', humidity:'%', precipitation:'mm', pressure:'hPa', wind_speed:'m/s'}[type]||''; }
@@ -484,11 +513,20 @@ class MapManager {
             bucket.n += 1;
             metrics.forEach(m=>{
                 const v = r[m];
-                if(typeof v === 'number') bucket[m] += v;
+                let num = null;
+                if (typeof v === 'number') num = v;
+                else if (typeof v === 'string' && v.trim()!=='' && !isNaN(v)) num = parseFloat(v);
+                if (num!=null && isFinite(num)) bucket[m] += num;
             });
         });
         const aggregated = Array.from(bucketMap.values()).map(b=>{
-            metrics.forEach(m=>{ if(b.n>0 && typeof b[m] === 'number') b[m] = b[m] / b.n; });
+            metrics.forEach(m=>{
+                if(b.n>0 && typeof b[m] === 'number') {
+                    b[m] = b[m] / b.n;
+                } else {
+                    b[m] = null;
+                }
+            });
             return b;
         }).sort((a,b)=> new Date(b.fecha_medicion) - new Date(a.fecha_medicion));
         return aggregated;

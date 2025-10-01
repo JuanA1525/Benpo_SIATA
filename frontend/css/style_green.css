@@ -41,7 +41,14 @@ main { padding:2rem; max-width:1500px; margin:0 auto; }
 .map-controls-panel { width:360px; max-width:360px; background:rgba(255,255,255,0.92); backdrop-filter:blur(12px); border-left:1px solid #b6e9c9; padding:1.4rem 1.4rem 2rem; overflow-y:auto; position:relative; }
 .heatmap-controls.standalone { background:transparent; border:none; box-shadow:none; padding:0; }
 .heatmap-controls.standalone h3 { text-align:left; margin-bottom:.65rem; font-size:1.05rem; }
-.heatmap-controls.standalone .form-grid { margin-bottom:.45rem; }
+.heatmap-controls.standalone .form-grid { margin-bottom:.25rem; }
+/* Reducir separación vertical entre grupos y botón */
+.heatmap-controls .form-grid + .form-grid { margin-top:.15rem; }
+.heatmap-controls .form-grid.small-cols { margin-bottom:.2rem; }
+.heatmap-controls .action-row { margin-top:.35rem; }
+/* Ajustar gap interno para compactar */
+.heatmap-controls .form-grid { gap:.35rem .45rem; }
+.heatmap-controls .form-grid label { margin:0; }
 .action-row { margin-top:.3rem; }
 .generate-btn { width:100%; background:linear-gradient(45deg,#198754,#2ecc71); color:#fff; border:none; padding:11px 18px; font-size:.9rem; font-weight:600; border-radius:14px; cursor:pointer; box-shadow:0 5px 18px -4px rgba(0,0,0,0.32); transition:.25s; display:flex; align-items:center; justify-content:center; gap:6px; }
 .generate-btn:hover { transform:translateY(-2px); box-shadow:0 12px 26px -6px rgba(0,0,0,0.45); }

@@ -117,17 +117,43 @@ Parámetros válidos `agg`: `mean`, `max`, `min`.
 | Conversión de timestamp a UTC naive | Homogeneidad en BD |
 
 ## 9. Heatmaps e Interpolación
-1. Selección de parámetro y función de agregación.
-2. Consulta: se agrupan valores por coordenada (lat, lon) (AVG/MAX/MIN).
-3. Interpolación (opcional): grilla regular (`grid_size`, default 40–55) via `scipy.interpolate.griddata` (linear → fallback nearest).
-4. Submuestreo para limitar puntos (≈2000) optimizando render.
-5. Normalización min-max dinámica para color scale y leyenda.
+Funcionalidad ampliada para soportar distintos métodos y mejorar interpretabilidad.
+
+| Aspecto | Detalle |
+|---------|---------|
+| Parámetros soportados | temperature, humidity, pressure, wind_speed, precipitation |
+| Agregaciones | mean (default), max, min |
+| Métodos de interpolación | grid (SciPy linear → nearest), poly2 (polinomio 2º), poly3 (polinomio 3º) |
+| Exclusiones | Estación 403 descartada (outlier espacial) |
+| Grid size | Ajustable (por defecto 40–55 en UI) |
+| Submuestreo | Limita celdas (~2000) para rendimiento |
+| Leyenda | Incluye cuantiles (P25, P75, P90) para orientar rangos reales |
+| Intensidad visual | Ligero realce (gamma < 1) para resaltar valores altos |
+
+Flujo:
+1. Selección de variable y agregación temporal → query a `/api/heatmap`.
+2. Si se activa interpolación → `/api/heatmap/interpolate?method=grid|poly2|poly3`.
+3. Backend calcula estadísticos (min, q25, q50, q75, q90, max) y los retorna para la leyenda.
+4. Frontend normaliza y aplica gradiente dinámico reforzando zonas altas.
+
+Notas de métodos:
+- grid: interpolación espacial clásica (robusta, depende de SciPy).
+- poly2: superficie suave; capta tendencias globales con bajo riesgo de sobreajuste.
+- poly3: mayor flexibilidad; usar con suficientes puntos (>10) para evitar artefactos.
+
+Recomendación: si los puntos son escasos o muy alineados, preferir poly2; para variabilidad local densa usar grid.
 
 ## 10. Panel Histórico de Estaciones
-- Filtros: horas atrás o rango absoluto (fecha inicio/fin).
-- Selección múltiple de métricas (t, h, p, ws, p1h, p24h).
-- Agregación en cliente por intervalos: 30m, 1h, 3h, 6h, 12h, 24h (promedio + conteo n).
-- Tabla con máximo 500 filas post-agrupación para mantener usabilidad.
+| Función | Descripción |
+|---------|-------------|
+| Filtros relativos | `hours_back` (ej. 6, 12, 24) |
+| Filtros absolutos | `start_date`, `end_date` (prioridad sobre hours_back) |
+| Métricas disponibles | t, h, p, ws, p1h, p24h (selección múltiple) |
+| Agregación local | Intervalos opcionales (30m, 1h, 3h, 6h, 12h, 24h) con promedio y conteo n |
+| Limpieza | Valores nulos por -999 ya filtrados en backend |
+| Limites | Máx. 5000 filas crudas (API), máx. 500 filas renderizadas |
+
+La agregación cliente realiza bucketing por piso de (timestamp / intervalo) acumulando y promediando sólo métricas seleccionadas. La columna `#` (n) informa cuántas observaciones originales componen cada bucket, reforzando transparencia estadística.
 
 ## 11. Frontend (Módulos Clave)
 | Archivo | Rol |
@@ -166,61 +192,7 @@ cd frontend
 python -m http.server 8000
 ```
 
-## 14. Variables de Entorno Clave
-| Variable | Ejemplo | Descripción |
-|----------|---------|-------------|
-| `DATABASE_URL` | `postgresql://user:pass@host:5432/db` | Conexión PostgreSQL |
-| `DISABLE_SCHEDULER` | `1` | Evita iniciar ETL (debug) |
-| `FLASK_ENV` | `development` | Modo desarrollo Flask |
-
-Desactivar scheduler (Windows PowerShell / Linux):
-```bash
-export DISABLE_SCHEDULER=1   # Linux/macOS
-set DISABLE_SCHEDULER=1      # Windows CMD
-```
-
-## 15. Estrategia de Escalado / Producción (AWS sugerido)
-| Componente | Opción Recomendada |
-|------------|--------------------|
-| Base de datos | Amazon RDS (PostgreSQL) |
-| Backend API | ECS Fargate / App Runner |
-| Frontend | S3 + CloudFront (estático) o Nginx en ECS |
-| ETL | Integrado (actual) o tarea programada ECS + EventBridge |
-| Observabilidad | CloudWatch Logs + métricas custom futuras |
-| Seguridad | SG restringidos, secretos en AWS SSM / Secrets Manager |
-
-## 16. Consideraciones de Performance
-- Interpolación solo bajo demanda (costo computacional moderado).
-- Submuestreo de grilla para evitar sobrecarga en Leaflet.
-- Límites (5000 filas histórico / 500 filas render) protegen el navegador.
-- Agregación cliente reduce densidad temporal.
-
-## 17. Calidad y Robustez
-- Limpieza agresiva de outliers.
-- Manejo de errores con logging detallado.
-- Capa CORS controlada (orígenes configurables si se endurece).
-- Estructura modular facilita pruebas unitarias futuras.
-
-## 18. Futuras Mejores (Roadmap sugerido)
-- Exportación CSV / GeoJSON de histórico y heatmaps.
-- Métricas derivadas (índice de calor, vientos promediados vectorialmente).
-- Alertas push (websocket o SSE) para eventos climatológicos.
-- Caché de interpolaciones frecuentes.
-- Panel analítico con gráficos (Sparkline / líneas comparativas).
-
-## 19. Ejemplos de Uso API (cURL)
-```bash
-# Pronósticos todas las zonas
-curl http://localhost:5000/api/forecasts
-
-# Histórico últimas 12h estación 101
-curl "http://localhost:5000/api/stations/101/history?hours_back=12"
-
-# Heatmap humedad promedio últimas 6h interpolado
-curl "http://localhost:5000/api/heatmap/interpolate?parameter=humidity&agg=mean&hours_back=6&grid_size=55"
-```
-
-## 20. Seguridad Básica Actual
+## 14. Seguridad Básica Actual
 | Aspecto | Estado |
 |---------|--------|
 | Sanitización path params | Validaciones básicas (zona válida, ids enteros) |
@@ -228,35 +200,5 @@ curl "http://localhost:5000/api/heatmap/interpolate?parameter=humidity&agg=mean&
 | CORS | Abierto (ajustar para prod) |
 | Gestión de secretos | Via entorno (centralizar en vault para prod) |
 
-## 21. Limitaciones Conocidas
-- Sin autenticación / autorización (no requerida en alcance académico).
-- Sin índices avanzados (añadir sobre `mediciones(estacion_codigo, fecha_medicion)` en escala mayor).
-- Sin sistema de roles ni auditoría.
-- Interpolación bloqueante (podría moverse a tarea asíncrona).
-
-## 22. Licencia y Uso
-Proyecto académico orientado a análisis ambiental del Valle de Aburrá. Uso interno / educativo. Añadir licencia formal si se abre al público.
-
-## 23. Créditos
-
-## 24. Apéndice: Tabla Rápida de Endpoints
-| Endpoint | Método | Descripción Breve |
-|----------|--------|-------------------|
-| `/forecasts` | GET | Pronósticos agrupados |
-| `/forecasts/<zona>` | GET | Pronóstico zona específica |
-| `/stations` | GET | Estaciones activas |
-| `/stations/all-data` | GET | Últimas mediciones todas |
-| `/stations/<id>/data` | GET | Última medición estación |
-| `/stations/<id>/history` | GET | Histórico filtrable |
-| `/heatmap` | GET | Puntos agregados heatmap |
-| `/heatmap/interpolate` | GET | Interpolación espacial |
-| `/health` | GET | Salud del servicio |
-
-> Parámetros clave: `parameter` (temperature|humidity|pressure|wind_speed|precipitation), `agg` (mean|max|min), `hours_back` o `start_date`/`end_date`.
-- Datos: SIATA (Sistema de Alerta Temprana del Valle de Aburrá)
-- Desarrollo: Benpo SIATA Dashboard
-
 ---
 **Hecho con enfoque en claridad, extensibilidad y visualización ambiental.**
-
-> ¿Necesitas un diagrama adicional (infra cloud / secuencia)? Abre un issue o extiéndelo fácilmente.
