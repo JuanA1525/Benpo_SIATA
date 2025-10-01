@@ -37,3 +37,38 @@ def get_estaciones():
             return jsonify([dict(row) for row in estaciones])
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+@api_bp.route('/pronosticos', methods=['GET'])
+def get_pronosticos():
+    """Obtener todos los pronósticos"""
+    try:
+        with get_db_cursor() as cursor:
+            cursor.execute("""
+                SELECT zona, fecha, temperatura_maxima, temperatura_minima,
+                       lluvia_madrugada, lluvia_mannana, lluvia_tarde, lluvia_noche,
+                       date_update
+                FROM pronosticos
+                ORDER BY zona, fecha
+            """)
+            pronosticos = cursor.fetchall()
+            return jsonify([dict(row) for row in pronosticos])
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@api_bp.route('/pronosticos/<zona>', methods=['GET'])
+def get_pronosticos_zona(zona):
+    """Obtener pronósticos de una zona específica"""
+    try:
+        with get_db_cursor() as cursor:
+            cursor.execute("""
+                SELECT zona, fecha, temperatura_maxima, temperatura_minima,
+                       lluvia_madrugada, lluvia_mannana, lluvia_tarde, lluvia_noche,
+                       date_update
+                FROM pronosticos
+                WHERE zona = %s
+                ORDER BY fecha
+            """, (zona,))
+            pronosticos = cursor.fetchall()
+            return jsonify([dict(row) for row in pronosticos])
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
