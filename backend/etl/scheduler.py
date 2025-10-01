@@ -1,21 +1,21 @@
 from apscheduler.schedulers.background import BackgroundScheduler
-from .data_collector import collect_wrf_forecasts
+from .data_collector import collect_all_data
 import atexit
 
 def start_scheduler():
     """Inicializar el scheduler para ETL"""
     scheduler = BackgroundScheduler()
 
-    # Job para recolectar pronósticos WRF cada 10 minutos
+    # Job para recolectar todos los datos cada 10 minutos
     scheduler.add_job(
-        func=collect_wrf_forecasts,
+        func=collect_all_data,
         trigger="interval",
         minutes=10,
-        id='wrf_forecasts_job'
+        id='data_collection_job'
     )
 
     # Ejecutar una vez al inicio
-    collect_wrf_forecasts()
+    collect_all_data()
 
     scheduler.start()
     print("✅ Scheduler iniciado")
