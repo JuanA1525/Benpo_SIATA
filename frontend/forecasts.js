@@ -21,7 +21,7 @@ class ForecastsManager {
                 this.forecastsData = response.data;
                 console.log('📊 [FORECAST] Datos procesados:', Object.keys(this.forecastsData).length, 'zonas');
                 console.log('🗺️ [FORECAST] Zonas disponibles:', Object.keys(this.forecastsData));
-                
+
                 // Log detallado de cada zona
                 Object.keys(this.forecastsData).forEach(zone => {
                     const zoneData = this.forecastsData[zone];
@@ -31,7 +31,7 @@ class ForecastsManager {
                         firstDay: zoneData.pronostico ? zoneData.pronostico[0] : null
                     });
                 });
-                
+
                 this.renderZoneSelector();
                 console.log('🎨 [FORECAST] Selector de zonas renderizado');
             } else {
@@ -111,21 +111,21 @@ class ForecastsManager {
             const zoneName = this.formatZoneName(zone);
             const zoneData = this.forecastsData[zone];
             console.log(`📊 [FORECAST] Datos de ${zone}:`, zoneData);
-            
+
             const hasData = zoneData && zoneData.pronostico && zoneData.pronostico.length > 0;
             console.log(`✔️ [FORECAST] ${zone} tiene datos:`, hasData);
-            
+
             if (hasData) {
                 const todayForecast = zoneData.pronostico[0];
                 console.log(`📅 [FORECAST] Pronóstico de hoy para ${zone}:`, todayForecast);
-                
+
                 const tempMax = todayForecast.temperatura_maxima || 'N/A';
                 const tempMin = todayForecast.temperatura_minima || 'N/A';
                 const rainProb = this.calculateRainProbability(todayForecast);
                 const rainLevel = this.getRainLevel(rainProb);
-                
+
                 console.log(`🌡️ [FORECAST] ${zone}: Temp max: ${tempMax}°C, min: ${tempMin}°C, lluvia: ${rainProb}% (${rainLevel})`);
-                
+
                 html += `
                     <div class="zone-card" onclick="forecastsManager.selectZone('${zone}')">
                         <div class="zone-header">
@@ -186,7 +186,7 @@ class ForecastsManager {
 
         const zoneData = this.forecastsData[zone];
         console.log(`📊 [FORECAST] Datos para ${zone}:`, zoneData);
-        
+
         if (!zoneData || !zoneData.pronostico || zoneData.pronostico.length === 0) {
             console.warn(`⚠️ [FORECAST] Sin datos para ${zone}`);
             this.showError(`No hay datos disponibles para ${this.formatZoneName(zone)}`);
@@ -201,22 +201,20 @@ class ForecastsManager {
         let html = `
             <div class="forecast-details">
                 <div class="forecast-header">
-                    <button class="back-btn" onclick="forecastsManager.goBackToSelector()">
-                        <i class="fas fa-arrow-left"></i> Volver
-                    </button>
+                    <button class="back-btn" style="display:none;" tabindex="-1" aria-hidden="true"></button>
                     <h2>${zoneName}</h2>
                     <div class="last-update">Última actualización: ${lastUpdate}</div>
                 </div>
-                
+
                 <div class="forecast-days">
         `;
 
         zoneData.pronostico.forEach((forecast, index) => {
             console.log(`📈 [FORECAST] Día ${index + 1} para ${zone}:`, forecast);
-            const dayLabel = index === 0 ? 'Hoy' : 
-                           index === 1 ? 'Mañana' : 
+            const dayLabel = index === 0 ? 'Hoy' :
+                           index === 1 ? 'Mañana' :
                            this.getDayName(new Date(forecast.fecha));
-            
+
             html += this.createDayElement(forecast, dayLabel, index);
         });
 
@@ -247,7 +245,7 @@ class ForecastsManager {
                     <h3>${dayLabel}</h3>
                     <div class="date">${date.toLocaleDateString('es-CO')}</div>
                 </div>
-                
+
                 <div class="weather-info">
                     <div class="temperature-section">
                         <div class="temp-item">
@@ -265,7 +263,7 @@ class ForecastsManager {
                             </div>
                         </div>
                     </div>
-                    
+
                     <div class="rain-section">
                         <div class="rain-probability ${rainLevel}">
                             <div class="rain-icon">${this.getRainIcon(rainLevel)}</div>
@@ -278,7 +276,7 @@ class ForecastsManager {
                         </div>
                     </div>
                 </div>
-                
+
                 <div class="hourly-rain">
                     <h4>Precipitación por horas</h4>
                     <div class="rain-hours">
@@ -301,7 +299,7 @@ class ForecastsManager {
             const levelText = hour.data || 'SIN DATOS';
             const prob = this.convertTextToProbability(levelText);
             const level = this.getRainLevel(prob);
-            
+
             return `
                 <div class="hour-item ${level}">
                     <div class="hour-label">${hour.label}</div>
@@ -315,7 +313,7 @@ class ForecastsManager {
 
     calculateRainProbability(forecast) {
         console.log('🌧️ [FORECAST] Calculando probabilidad de lluvia para:', forecast);
-        
+
         // Convertir los textos ALTA, MEDIA, BAJA a probabilidades numéricas
         const levels = [
             forecast.lluvia_madrugada,
@@ -323,17 +321,17 @@ class ForecastsManager {
             forecast.lluvia_tarde,
             forecast.lluvia_noche
         ];
-        
+
         console.log('⏰ [FORECAST] Niveles por período:', {
             madrugada: forecast.lluvia_madrugada,
             mannana: forecast.lluvia_mannana,
             tarde: forecast.lluvia_tarde,
             noche: forecast.lluvia_noche
         });
-        
+
         let totalProb = 0;
         let count = 0;
-        
+
         levels.forEach((level, index) => {
             if (level) {
                 const prob = this.convertTextToProbability(level);
@@ -342,16 +340,16 @@ class ForecastsManager {
                 count++;
             }
         });
-        
+
         const avgProb = count > 0 ? Math.round(totalProb / count) : 0;
         console.log(`📈 [FORECAST] Probabilidad promedio calculada: ${avgProb}%`);
-        
+
         return avgProb;
     }
 
     convertTextToProbability(text) {
         if (!text) return 0;
-        
+
         const level = text.toUpperCase();
         switch (level) {
             case 'ALTA': return 80;
@@ -420,7 +418,7 @@ class ForecastsManager {
             'bello': 'Bello',
             'barbosa': 'Barbosa'
         };
-        
+
         return zoneNames[zone] || zone;
     }
 

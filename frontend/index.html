@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SIATA Dashboard - Benpo</title>
-    <link rel="stylesheet" href="css/style_new.css">
+    <link rel="stylesheet" href="css/style_green.css">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
@@ -17,17 +17,17 @@
             <p class="subtitle">Sistema de Alerta Temprana del Valle de Aburrá</p>
         </div>
         <nav>
-            <button onclick="showTab('forecasts')" class="tab-btn active" data-tab="forecasts">
-                <i class="fas fa-cloud-rain"></i> Pronósticos
+            <button onclick="showTab('map')" class="tab-btn active" data-tab="map">
+                <i class="fas fa-map"></i> Mapa
             </button>
-            <button onclick="showTab('map')" class="tab-btn" data-tab="map">
-                <i class="fas fa-map"></i> Mapa Estaciones
+            <button onclick="showTab('forecasts')" class="tab-btn" data-tab="forecasts">
+                <i class="fas fa-cloud-rain"></i> Pronósticos
             </button>
         </nav>
     </header>
 
     <main>
-        <div id="forecasts-tab" class="tab-content active">
+    <div id="forecasts-tab" class="tab-content">
             <div class="tab-header">
                 <h2>Pronósticos de Lluvia por Zonas</h2>
                 <button onclick="forecastsManager.loadForecasts()" class="refresh-btn">
@@ -37,18 +37,24 @@
             <div id="forecasts-container"></div>
         </div>
 
-        <div id="map-tab" class="tab-content">
-            <div class="tab-header">
-                <h2>Mapa de Estaciones SIATA</h2>
-                <button onclick="mapManager.refreshData()" class="refresh-btn">
-                    <i class="fas fa-sync-alt"></i> Actualizar
-                </button>
-            </div>
-            <div class="map-wrapper">
-                <div id="map"></div>
+        <div id="map-tab" class="tab-content active">
+            <div id="map-layout" class="map-layout">
+                <div class="map-wrapper">
+                    <div id="map"></div>
+                    <div id="map-toast-container"></div>
+                </div>
+                <div id="map-controls" class="map-controls-panel"></div>
             </div>
         </div>
     </main>
+
+    <div id="global-loader" class="global-loader" aria-hidden="false">
+        <div class="loader-inner">
+            <div class="spinner-ring"></div>
+            <h2>Cargando Datos SIATA</h2>
+            <p>Inicializando mapa y pronósticos...</p>
+        </div>
+    </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>

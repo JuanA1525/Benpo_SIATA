@@ -11,12 +11,18 @@ class MapManager {
     }
 
     initMap() {
+        if (this.map) {
+            // Already initialized, just ensure size
+            setTimeout(()=> this.map.invalidateSize(), 150);
+            return;
+        }
         this.map = L.map('map').setView([6.2442, -75.5812], 11);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '© OpenStreetMap contributors'
         }).addTo(this.map);
         this.createHeatmapControls();
         this.loadStationsData();
+        this.injectRefreshOverlay();
     }
 
     createHeatmapControls() {
@@ -24,10 +30,15 @@ class MapManager {
         const ymd = d => d.toISOString().split('T')[0];
         const endDefault = ymd(today);
         const startDefault = ymd(new Date(today.getTime() - 6 * 3600 * 1000));
-        const controlsHTML = `
-            <div class="heatmap-controls">
-                <h3>🗺️ Heatmap & Estaciones</h3>
-                <div class="control-section form-grid">
+        const panel = document.getElementById('map-controls');
+        if (!panel) return;
+        panel.innerHTML = `
+            <div class="heatmap-controls standalone">
+                <div class="panel-title">
+                    <h3>🗺️ Heatmap</h3>
+                    <button type="button" class="help-btn" onclick="mapManager.toggleHelp()" aria-expanded="false" aria-controls="heatmap-help" title="Cómo usar el heatmap">?</button>
+                </div>
+                <div class="form-grid">
                     <label>Parámetro
                         <select id="hm-parameter" class="input-select">
                             <option value="temperature">Temperatura (°C)</option>
@@ -45,7 +56,7 @@ class MapManager {
                         </select>
                     </label>
                 </div>
-                <div class="control-section form-grid">
+                <div class="form-grid">
                     <label>Horas atrás
                         <input id="hm-hours-back" class="input-number" type="number" min="1" max="48" placeholder="6" />
                     </label>
@@ -56,7 +67,7 @@ class MapManager {
                         <input id="hm-end-date" class="input-date" type="date" value="${endDefault}" />
                     </label>
                 </div>
-                <div class="control-section form-grid small-cols">
+                <div class="form-grid small-cols">
                     <label class="checkbox-inline">
                         <input id="hm-interpolate" type="checkbox" /> Interpolar
                     </label>
@@ -64,14 +75,25 @@ class MapManager {
                         <input id="hm-toggle-markers" type="checkbox" checked /> Marcadores
                     </label>
                 </div>
-                <div class="control-section buttons-row">
-                    <button class="heatmap-btn" onclick="mapManager.generateAdvancedHeatmap()">⚡ Generar</button>
-                    <button class="heatmap-btn" onclick="mapManager.showQuick('temperature')">🌡️</button>
-                    <button class="heatmap-btn" onclick="mapManager.showQuick('humidity')">💧</button>
-                    <button class="heatmap-btn clear" onclick="mapManager.clearHeatmap()">❌</button>
+                <div class="action-row">
+                    <button class="generate-btn" onclick="mapManager.generateAdvancedHeatmap()">Generar Heatmap</button>
                 </div>
-                <div class="control-section">
-                    <button class="control-btn" onclick="mapManager.refreshData()">🔄 Actualizar Estaciones</button>
+                <div id="heatmap-help" class="heatmap-help" style="display:none;">
+                    <div class="help-header">
+                        <h4>¿Cómo funciona?</h4>
+                        <button type="button" class="close-help" onclick="mapManager.toggleHelp()" aria-label="Cerrar ayuda">×</button>
+                    </div>
+                    <ul>
+                        <li><strong>Parámetro:</strong> Variable meteorológica a visualizar.</li>
+                        <li><strong>Agregación:</strong> Cómo se resume el periodo (promedio / máximo / mínimo).</li>
+                        <li><strong>Horas atrás:</strong> Intervalo relativo. Si lo dejas vacío puedes usar fechas Inicio / Fin.</li>
+                        <li><strong>Inicio / Fin:</strong> Rango absoluto (YYYY-MM-DD). Ignora Horas atrás si se usa.</li>
+                        <li><strong>Interpolar:</strong> Genera una malla continua (más suave pero computacionalmente más costosa).</li>
+                        <li><strong>Marcadores:</strong> Muestra / oculta las estaciones sobre el mapa.</li>
+                        <li><strong>Generar Heatmap:</strong> Llama a la API y renderiza el resultado. La leyenda muestra el rango real.</li>
+                        <li><strong>Leyenda:</strong> Escala de colores dinámicos del mínimo al máximo hallado.</li>
+                    </ul>
+                    <p class="note">Consejo: Usa menos horas o sin interpolación para respuestas más rápidas.</p>
                 </div>
                 <div class="meta-info" id="hm-meta" style="display:none;"></div>
                 <div id="heatmap-legend" class="heatmap-legend" style="display:none;">
@@ -83,13 +105,6 @@ class MapManager {
                     </div>
                 </div>
             </div>`;
-        const controlsDiv = document.createElement('div');
-        controlsDiv.innerHTML = controlsHTML;
-        controlsDiv.className = 'map-controls-container';
-        const mapContainer = document.getElementById('map');
-        if (mapContainer && mapContainer.parentNode) {
-            mapContainer.parentNode.insertBefore(controlsDiv, mapContainer);
-        }
     }
 
     async loadStationsData() {
@@ -129,34 +144,38 @@ class MapManager {
         const hasTemp = stationData.t != null;
         const hasHumidity = stationData.h != null;
         const hasRain = stationData.p1h != null;
-        let iconColor = '#3498db';
-        if (hasTemp && hasHumidity && hasRain) iconColor = '#27ae60';
-        else if (hasTemp || hasHumidity) iconColor = '#f39c12';
+        // Determine marker intensity level
+        let level = 1; // default
+        if (hasTemp && hasHumidity && hasRain) level = 3; else if (hasTemp || hasHumidity) level = 2;
+        const html = `<div class="station-marker level-${level}" data-station-id="${info.id || info.codigo}"></div>`;
         const customIcon = L.divIcon({
             className: 'custom-station-marker',
-            html: `<div style="background-color:${iconColor};width:12px;height:12px;border-radius:50%;border:2px solid #fff;box-shadow:0 2px 4px rgba(0,0,0,0.3);"></div>`,
-            iconSize: [16,16], iconAnchor:[8,8]
+            html,
+            iconSize: [20, 20],
+            iconAnchor: [10, 10]
         });
-        const marker = L.marker([info.latitud, info.longitud], {icon: customIcon});
-        marker.bindPopup(this.createPopupContent(stationData));
+        const marker = L.marker([info.latitud, info.longitud], { icon: customIcon });
+        // Remove popup binding, we will handle hover tooltip
+        marker.on('mouseover', () => this.showStationTooltip(marker, stationData));
+        marker.on('mouseout', () => this.hideStationTooltip(marker));
         return marker;
     }
 
-    createPopupContent(stationData) {
-        const info = stationData.info;
-        const fmt = (v, suf='') => (v==null||isNaN(v)? '—' : `${v}${suf}`);
-        return `<div class="station-popup">
-            <h3>${info.nombre}</h3>
-            <p><strong>📍 Ciudad:</strong> ${info.ciudad||''}</p>
-            <p><strong>🔢 Código:</strong> ${info.codigo}</p>
-            <hr/>
-            <p><strong>🌡️ Temp:</strong> ${fmt(stationData.t,'°C')}</p>
-            <p><strong>💧 Humedad:</strong> ${fmt(stationData.h,'%')}</p>
-            <p><strong>🌫️ Presión:</strong> ${fmt(stationData.p,' hPa')}</p>
-            <p><strong>🌧️ Lluvia 1h:</strong> ${fmt(stationData.p1h,' mm')}</p>
-            <p><strong>🌧️ Lluvia 24h:</strong> ${fmt(stationData.p24h,' mm')}</p>
-            <p><strong>⏰ Actualización:</strong> ${stationData.timestamp? new Date(stationData.timestamp).toLocaleString(): '—'}</p>
-        </div>`;
+    showStationTooltip(marker, stationData) {
+        if (!marker._tooltip) {
+            const info = stationData.info;
+            const fmt = (v, suf = '') => (v == null || isNaN(v) ? '—' : `${v}${suf}`);
+            const content = `<h3>${info.nombre}</h3>
+                <p><strong>Temp:</strong> ${fmt(stationData.t,'°C')} | <strong>Hum:</strong> ${fmt(stationData.h,'%')}</p>
+                <p><strong>Pres:</strong> ${fmt(stationData.p,' hPa')} | <strong>Lluvia 1h:</strong> ${fmt(stationData.p1h,' mm')}</p>
+                <p><strong>Act:</strong> ${stationData.timestamp ? new Date(stationData.timestamp).toLocaleTimeString() : '—'}</p>`;
+            marker.bindTooltip(content, { direction: 'top', opacity: 1, permanent: false, className: 'station-tooltip', offset: [0, -14] });
+        }
+        marker.openTooltip();
+    }
+
+    hideStationTooltip(marker) {
+        if (marker && marker.closeTooltip) marker.closeTooltip();
     }
 
     showQuick(type) {
@@ -297,7 +316,71 @@ class MapManager {
         const legend=document.getElementById('heatmap-legend'); if(legend) legend.style.display='none';
     }
     clearMarkers(){ this.markers.forEach(m=>this.map.removeLayer(m)); this.markers=[]; }
-    refreshData(){ this.loadStationsData(); }
+    async refreshData(){
+        const btn = document.querySelector('.map-refresh-overlay .refresh-btn');
+        if(btn){
+            const originalHTML = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<div class="refresh-spinner"></div> Actualizando';
+            try {
+                const loadPromise = this.loadStationsData();
+                const timeout = new Promise(res=> setTimeout(res, 2000));
+                await Promise.race([loadPromise, timeout]);
+                this.showToast('Estaciones actualizadas ' + new Date().toLocaleTimeString());
+            } catch(e){
+                this.showToast('Error al actualizar estaciones');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = originalHTML;
+            }
+            return;
+        }
+        // Fallback cuando no existe overlay (ej: antes de inyección)
+        try {
+            const loadPromise = this.loadStationsData();
+            const timeout = new Promise(res=> setTimeout(res, 2000));
+            await Promise.race([loadPromise, timeout]);
+            this.showToast('Estaciones actualizadas');
+        } catch(e) {
+            this.showToast('Error al actualizar estaciones');
+        }
+    }
+
+    injectRefreshOverlay(){
+        const mapWrapper = document.querySelector('#map-tab .map-wrapper');
+        if(!mapWrapper) return;
+        if(mapWrapper.querySelector('.map-refresh-overlay')) return; // already
+        const overlay = document.createElement('div');
+        overlay.className = 'map-refresh-overlay';
+        overlay.innerHTML = `<button class="refresh-btn" onclick="mapManager.refreshData()"><i class="fas fa-sync-alt"></i> Actualizar Estaciones</button>`;
+        mapWrapper.appendChild(overlay);
+    }
+
+    showToast(message){
+        const container = document.getElementById('map-toast-container');
+        if(!container) return;
+        const toast = document.createElement('div');
+        toast.className = 'map-toast';
+        toast.textContent = message;
+        container.appendChild(toast);
+        setTimeout(()=>{ toast.remove(); }, 5200);
+    }
+
+    toggleHelp(){
+        const help = document.getElementById('heatmap-help');
+        const btn = document.querySelector('.help-btn');
+        if(!help || !btn) return;
+        const visible = help.style.display !== 'none';
+        if(visible){
+            help.style.display = 'none';
+            btn.setAttribute('aria-expanded','false');
+        } else {
+            help.style.display = 'block';
+            btn.setAttribute('aria-expanded','true');
+            // Scroll into view if panel has scroll
+            help.scrollIntoView({behavior:'smooth', block:'start'});
+        }
+    }
 }
 
 const mapManager = new MapManager();
