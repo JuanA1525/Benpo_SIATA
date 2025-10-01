@@ -16,54 +16,34 @@ class ApiClient {
         }
     }
 
+    // Obtener pronósticos de todas las zonas
+    async getForecasts() {
+        return await this.get('/forecasts');
+    }
+
+    // Obtener pronóstico de una zona específica
+    async getZoneForecast(zone) {
+        return await this.get(`/forecasts/${zone}`);
+    }
+
     // Obtener todas las estaciones
     async getStations() {
         return await this.get('/stations');
     }
 
     // Obtener datos de una estación específica
-    async getStationData(stationId, startDate = null, endDate = null) {
-        let endpoint = `/stations/${stationId}/data`;
-        const params = new URLSearchParams();
-        
-        if (startDate) params.append('start_date', startDate);
-        if (endDate) params.append('end_date', endDate);
-        
-        if (params.toString()) {
-            endpoint += `?${params.toString()}`;
-        }
-        
-        return await this.get(endpoint);
+    async getStationData(stationId) {
+        return await this.get(`/stations/${stationId}/data`);
     }
 
-    // Obtener datos para heatmap
-    async getHeatmapData(parameter, startDate = null, endDate = null) {
-        let endpoint = `/heatmap/${parameter}`;
-        const params = new URLSearchParams();
-        
-        if (startDate) params.append('start_date', startDate);
-        if (endDate) params.append('end_date', endDate);
-        
-        if (params.toString()) {
-            endpoint += `?${params.toString()}`;
-        }
-        
-        return await this.get(endpoint);
+    // Obtener datos de todas las estaciones
+    async getAllStationsData() {
+        return await this.get('/stations/all-data');
     }
 
-    // Obtener estadísticas de una estación
-    async getStationStats(stationId, parameter, startDate = null, endDate = null) {
-        let endpoint = `/stations/${stationId}/stats/${parameter}`;
-        const params = new URLSearchParams();
-        
-        if (startDate) params.append('start_date', startDate);
-        if (endDate) params.append('end_date', endDate);
-        
-        if (params.toString()) {
-            endpoint += `?${params.toString()}`;
-        }
-        
-        return await this.get(endpoint);
+    // Health check
+    async healthCheck() {
+        return await this.get('/health');
     }
 }
 

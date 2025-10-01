@@ -4,140 +4,38 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SIATA - Sistema de Información Ambiental</title>
-
-    <!-- Leaflet CSS -->
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-
-    <!-- Leaflet Heat Plugin -->
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
-
-    <!-- Chart.js -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
-    <!-- Custom CSS -->
+    <title>SIATA Dashboard - Benpo</title>
     <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 </head>
 
 <body>
-    <!-- Header -->
-    <header class="header">
-        <div class="header-content">
-            <h1>SIATA - Sistema de Información Ambiental</h1>
-            <div class="header-controls">
-                <div class="filter-group">
-                    <label for="municipality-filter">Municipio:</label>
-                    <select id="municipality-filter">
-                        <option value="">Cargando...</option>
-                    </select>
-                </div>
-                <div class="filter-group">
-                    <label for="global-start-date">Desde:</label>
-                    <input type="date" id="global-start-date">
-                </div>
-                <div class="filter-group">
-                    <label for="global-end-date">Hasta:</label>
-                    <input type="date" id="global-end-date">
-                </div>
-                <div class="filter-group">
-                    <label>
-                        <input type="checkbox" id="auto-refresh">
-                        Auto actualizar
-                    </label>
-                    <select id="refresh-interval">
-                        <option value="30">30s</option>
-                        <option value="60">1min</option>
-                        <option value="300">5min</option>
-                        <option value="600">10min</option>
-                    </select>
-                </div>
-            </div>
-        </div>
+    <header>
+        <h1>SIATA Dashboard</h1>
+        <nav>
+            <button onclick="showTab('forecasts')" class="tab-btn active">Pronósticos</button>
+            <button onclick="showTab('map')" class="tab-btn">Mapa Estaciones</button>
+        </nav>
     </header>
 
-    <!-- Navigation -->
-    <nav class="navigation">
-        <button class="nav-btn active" data-view="stations">
-            <span>📍</span>Estaciones
-        </button>
-        <button class="nav-btn" data-view="heatmap">
-            <span>🗺️</span>Mapa de Calor
-        </button>
-        <button class="nav-btn" data-view="analytics">
-            <span>📊</span>Analíticas
-        </button>
-    </nav>
-
-    <!-- Main Content -->
-    <main class="main-content">
-        <!-- Map Container -->
-        <div class="map-container">
-            <div id="map"></div>
+    <main>
+        <div id="forecasts-tab" class="tab-content active">
+            <h2>Pronósticos de Lluvia por Zonas</h2>
+            <button onclick="forecastsManager.loadForecasts()" class="refresh-btn">Actualizar Pronósticos</button>
+            <div id="forecasts-container"></div>
         </div>
 
-        <!-- Side Panel -->
-        <div class="side-panel">
-            <!-- Stations View -->
-            <div id="stations-view" class="view-panel">
-                <h2>Estaciones Meteorológicas</h2>
-                <div id="stations-summary" class="summary-container">
-                    <div class="loading">Cargando resumen...</div>
-                </div>
-                <div class="instructions">
-                    <h3>Instrucciones</h3>
-                    <ul>
-                        <li>Haz clic en cualquier marcador para ver información de la estación</li>
-                        <li>Usa el filtro de municipio para mostrar solo estaciones específicas</li>
-                        <li>Los marcadores rojos indican la estación seleccionada</li>
-                    </ul>
-                </div>
-            </div>
-
-            <!-- Heatmap View -->
-            <div id="heatmap-view" class="view-panel" style="display: none;">
-                <h2>Mapas de Calor</h2>
-                <div id="heatmap-controls" class="controls-panel">
-                    <!-- Controles se generan dinámicamente -->
-                </div>
-            </div>
-
-            <!-- Analytics View -->
-            <div id="analytics-view" class="view-panel" style="display: none;">
-                <h2>Analíticas y Estadísticas</h2>
-                <div id="general-stats" class="stats-container">
-                    <div class="loading">Cargando estadísticas...</div>
-                </div>
-                <div id="trends-chart" class="chart-container">
-                    <h3>Tendencias de Temperatura y Humedad</h3>
-                    <div class="loading">Cargando gráfico...</div>
-                </div>
-            </div>
+        <div id="map-tab" class="tab-content">
+            <h2>Mapa de Estaciones SIATA</h2>
+            <button onclick="mapManager.refreshData()" class="refresh-btn">Actualizar Datos</button>
+            <div id="map"></div>
         </div>
     </main>
 
-    <!-- Modal for Station Details -->
-    <div id="stationModal" class="modal">
-        <div class="modal-content">
-            <span class="close">&times;</span>
-            <div id="modalContent">
-                <!-- Contenido se genera dinámicamente -->
-            </div>
-        </div>
-    </div>
-
-    <!-- Loading Overlay -->
-    <div id="loadingOverlay" class="loading-overlay" style="display: none;">
-        <div class="loading-spinner">
-            <div class="spinner"></div>
-            <p>Cargando datos...</p>
-        </div>
-    </div>
-
-    <!-- Scripts -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="api.js"></script>
+    <script src="forecasts.js"></script>
     <script src="map.js"></script>
-    <script src="heatmap.js"></script>
     <script src="app.js"></script>
 </body>
 

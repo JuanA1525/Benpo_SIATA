@@ -1,74 +1,95 @@
 from flask import Blueprint, jsonify, request
-from database.db_manager import get_db_cursor
-import traceback
+from etl.siata_collector import SiataCollector
+import logging
+from datetime import datetime
 
-api_bp = Blueprint('api', __name__)
+api = Blueprint('api', __name__)
+siata_collector = SiataCollector()
 
-@api_bp.route('/health', methods=['GET'])
-def health():
-    """Endpoint de salud"""
+@api.route('/forecasts', methods=['GET'])
+def get_forecasts():
+    """Obtiene pronósticos de lluvia para todas las zonas"""
     try:
-        with get_db_cursor() as cursor:
-            cursor.execute("SELECT COUNT(*) as count FROM estaciones")
-            result = cursor.fetchone()
-            return jsonify({
-                'status': 'ok',
-                'estaciones_count': result['count'] if result else 0
-            })
-    except Exception as e:
+        forecasts = siata_collector.fetch_forecast_data()
         return jsonify({
-            'status': 'error',
-            'message': str(e)
-        }), 500
-
-@api_bp.route('/estaciones', methods=['GET'])
-def get_estaciones():
-    """Obtener todas las estaciones"""
-    try:
-        with get_db_cursor() as cursor:
-            cursor.execute("""
-                SELECT codigo, nombre, latitud, longitud, ciudad,
-                       comuna, subcuenca, barrio, activa
-                FROM estaciones
-                WHERE activa = true
-                ORDER BY nombre
-            """)
-            estaciones = cursor.fetchall()
-            return jsonify([dict(row) for row in estaciones])
+            'success': True,
+            'data': forecasts,
+            'zones': siata_collector.zones
+        })
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logging.error(f"Error en /forecasts: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
-@api_bp.route('/pronosticos', methods=['GET'])
-def get_pronosticos():
-    """Obtener todos los pronósticos"""
+@api.route('/forecasts/<zone>', methods=['GET'])
+def get_zone_forecast(zone):
+    """Obtiene pronóstico de una zona específica"""
     try:
-        with get_db_cursor() as cursor:
-            cursor.execute("""
-                SELECT zona, fecha, temperatura_maxima, temperatura_minima,
-                       lluvia_madrugada, lluvia_mannana, lluvia_tarde, lluvia_noche,
-                       date_update
-                FROM pronosticos
-                ORDER BY zona, fecha
-            """)
-            pronosticos = cursor.fetchall()
-            return jsonify([dict(row) for row in pronosticos])
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        if zone not in siata_collector.zones:
+            return jsonify({'success': False, 'error': 'Zona no válida'}), 400
 
-@api_bp.route('/pronosticos/<zona>', methods=['GET'])
-def get_pronosticos_zona(zona):
-    """Obtener pronósticos de una zona específica"""
-    try:
-        with get_db_cursor() as cursor:
-            cursor.execute("""
-                SELECT zona, fecha, temperatura_maxima, temperatura_minima,
-                       lluvia_madrugada, lluvia_mannana, lluvia_tarde, lluvia_noche,
-                       date_update
-                FROM pronosticos
-                WHERE zona = %s
-                ORDER BY fecha
-            """, (zona,))
-            pronosticos = cursor.fetchall()
-            return jsonify([dict(row) for row in pronosticos])
+        forecasts = siata_collector.fetch_forecast_data()
+        zone_data = forecasts.get(zone)
+
+        if not zone_data:
+            return jsonify({'success': False, 'error': 'Datos no disponibles'}), 404
+
+        return jsonify({
+            'success': True,
+            'zone': zone,
+            'data': zone_data
+        })
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logging.error(f"Error en /forecasts/{zone}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@api.route('/stations', methods=['GET'])
+def get_stations():
+    """Obtiene lista de estaciones activas"""
+    try:
+        stations_list = siata_collector.fetch_stations_list()
+        if not stations_list:
+            return jsonify({'success': False, 'error': 'No se pudieron obtener las estaciones'}), 500
+
+        return jsonify({
+            'success': True,
+            'data': stations_list
+        })
+    except Exception as e:
+        logging.error(f"Error en /stations: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@api.route('/stations/<int:station_id>/data', methods=['GET'])
+def get_station_data(station_id):
+    """Obtiene datos de una estación específica"""
+    try:
+        station_data = siata_collector.fetch_station_data(station_id)
+        if not station_data:
+            return jsonify({'success': False, 'error': 'Estación no encontrada'}), 404
+
+        return jsonify({
+            'success': True,
+            'station_id': station_id,
+            'data': station_data
+        })
+    except Exception as e:
+        logging.error(f"Error en /stations/{station_id}/data: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@api.route('/stations/all-data', methods=['GET'])
+def get_all_stations_data():
+    """Obtiene datos de todas las estaciones"""
+    try:
+        all_data = siata_collector.fetch_all_stations_data()
+        return jsonify({
+            'success': True,
+            'data': all_data,
+            'count': len(all_data)
+        })
+    except Exception as e:
+        logging.error(f"Error en /stations/all-data: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@api.route('/health', methods=['GET'])
+def health_check():
+    """Endpoint de salud"""
+    return jsonify({'status': 'healthy', 'timestamp': str(datetime.now())})

@@ -6,3 +6,4 @@ APScheduler
 python-dotenv
 scipy
 numpy
+python-dateutil

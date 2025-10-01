@@ -1,32 +1,20 @@
 from flask import Flask
 from flask_cors import CORS
-import os
-from database.db_manager import init_db
-from api.routes import api_bp
-from etl.scheduler import start_scheduler
+from api.routes import api
+import logging
 
-def create_app():
-    app = Flask(__name__)
-    CORS(app)
+# Configurar logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-    # Configuración
-    app.config['DATABASE_URL'] = os.getenv('DATABASE_URL')
+app = Flask(__name__)
+CORS(app)
 
-    # Registrar blueprints
-    app.register_blueprint(api_bp, url_prefix='/api')
+# Registrar blueprints
+app.register_blueprint(api, url_prefix='/api')
 
-    # Inicializar base de datos
-    init_db()
-
-    # Iniciar scheduler ETL
-    start_scheduler()
-
-    @app.route('/')
-    def health_check():
-        return {'status': 'Backend SIATA running', 'version': '1.0'}
-
-    return app
+@app.route('/')
+def index():
+    return {'message': 'SIATA Data API', 'status': 'running'}
 
 if __name__ == '__main__':
-    app = create_app()
     app.run(host='0.0.0.0', port=5000, debug=True)
