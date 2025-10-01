@@ -1,106 +1,144 @@
 <!DOCTYPE html>
 <html lang="es">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SIATA - Benpo Dashboard</title>
-
-    <!-- Bootstrap CSS -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <title>SIATA - Sistema de Información Ambiental</title>
 
     <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 
+    <!-- Leaflet Heat Plugin -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
     <!-- Custom CSS -->
     <link rel="stylesheet" href="css/style.css">
 </head>
+
 <body>
-    <div class="container-fluid">
-        <header class="bg-primary text-white p-3 mb-4">
-            <h1>SIATA - Sistema de Alerta Temprana</h1>
-            <p class="mb-0">Dashboard Meteorológico del Valle de Aburrá</p>
-        </header>
-
-        <div class="row">
-            <!-- Controles -->
-            <div class="col-md-3">
-                <div class="card">
-                    <div class="card-header">
-                        <h5>Controles</h5>
-                    </div>
-                    <div class="card-body">
-                        <div class="mb-3">
-                            <label for="heatmapSelect" class="form-label">Tipo de Heatmap:</label>
-                            <select class="form-select" id="heatmapSelect">
-                                <option value="">Sin Heatmap</option>
-                                <option value="temperatura">Temperatura</option>
-                                <option value="humedad">Humedad</option>
-                                <option value="precipitacion">Precipitación</option>
-                            </select>
-                        </div>
-
-                        <div class="mb-3">
-                            <button class="btn btn-success w-100" id="updateDataBtn">
-                                Actualizar Datos
-                            </button>
-                        </div>
-
-                        <div class="mb-3">
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" id="showRadarCheck">
-                                <label class="form-check-label" for="showRadarCheck">
-                                    Mostrar Radar
-                                </label>
-                            </div>
-                        </div>
-                    </div>
+    <!-- Header -->
+    <header class="header">
+        <div class="header-content">
+            <h1>SIATA - Sistema de Información Ambiental</h1>
+            <div class="header-controls">
+                <div class="filter-group">
+                    <label for="municipality-filter">Municipio:</label>
+                    <select id="municipality-filter">
+                        <option value="">Cargando...</option>
+                    </select>
                 </div>
-
-                <!-- Status -->
-                <div class="card mt-3">
-                    <div class="card-header">
-                        <h6>Estado del Sistema</h6>
-                    </div>
-                    <div class="card-body">
-                        <div id="systemStatus">
-                            <small class="text-muted">Cargando...</small>
-                        </div>
-                    </div>
+                <div class="filter-group">
+                    <label for="global-start-date">Desde:</label>
+                    <input type="date" id="global-start-date">
                 </div>
-            </div>
-
-            <!-- Mapa -->
-            <div class="col-md-9">
-                <div class="card">
-                    <div class="card-body p-0">
-                        <div id="map" style="height: 600px;"></div>
-                    </div>
+                <div class="filter-group">
+                    <label for="global-end-date">Hasta:</label>
+                    <input type="date" id="global-end-date">
+                </div>
+                <div class="filter-group">
+                    <label>
+                        <input type="checkbox" id="auto-refresh">
+                        Auto actualizar
+                    </label>
+                    <select id="refresh-interval">
+                        <option value="30">30s</option>
+                        <option value="60">1min</option>
+                        <option value="300">5min</option>
+                        <option value="600">10min</option>
+                    </select>
                 </div>
             </div>
         </div>
+    </header>
 
-        <!-- Pronósticos -->
-        <div class="row mt-4">
-            <div class="col-12">
-                <div class="card">
-                    <div class="card-header">
-                        <h5>Pronósticos por Zona</h5>
-                    </div>
-                    <div class="card-body">
-                        <div id="forecastContainer" class="row">
-                            <!-- Los pronósticos se cargarán aquí -->
-                        </div>
-                    </div>
+    <!-- Navigation -->
+    <nav class="navigation">
+        <button class="nav-btn active" data-view="stations">
+            <span>📍</span>Estaciones
+        </button>
+        <button class="nav-btn" data-view="heatmap">
+            <span>🗺️</span>Mapa de Calor
+        </button>
+        <button class="nav-btn" data-view="analytics">
+            <span>📊</span>Analíticas
+        </button>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <!-- Map Container -->
+        <div class="map-container">
+            <div id="map"></div>
+        </div>
+
+        <!-- Side Panel -->
+        <div class="side-panel">
+            <!-- Stations View -->
+            <div id="stations-view" class="view-panel">
+                <h2>Estaciones Meteorológicas</h2>
+                <div id="stations-summary" class="summary-container">
+                    <div class="loading">Cargando resumen...</div>
                 </div>
+                <div class="instructions">
+                    <h3>Instrucciones</h3>
+                    <ul>
+                        <li>Haz clic en cualquier marcador para ver información de la estación</li>
+                        <li>Usa el filtro de municipio para mostrar solo estaciones específicas</li>
+                        <li>Los marcadores rojos indican la estación seleccionada</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Heatmap View -->
+            <div id="heatmap-view" class="view-panel" style="display: none;">
+                <h2>Mapas de Calor</h2>
+                <div id="heatmap-controls" class="controls-panel">
+                    <!-- Controles se generan dinámicamente -->
+                </div>
+            </div>
+
+            <!-- Analytics View -->
+            <div id="analytics-view" class="view-panel" style="display: none;">
+                <h2>Analíticas y Estadísticas</h2>
+                <div id="general-stats" class="stats-container">
+                    <div class="loading">Cargando estadísticas...</div>
+                </div>
+                <div id="trends-chart" class="chart-container">
+                    <h3>Tendencias de Temperatura y Humedad</h3>
+                    <div class="loading">Cargando gráfico...</div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Modal for Station Details -->
+    <div id="stationModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <div id="modalContent">
+                <!-- Contenido se genera dinámicamente -->
             </div>
         </div>
     </div>
 
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="loading-overlay" style="display: none;">
+        <div class="loading-spinner">
+            <div class="spinner"></div>
+            <p>Cargando datos...</p>
+        </div>
+    </div>
+
     <!-- Scripts -->
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="js/api.js"></script>
-    <script src="js/map.js"></script>
-    <script src="js/app.js"></script>
+    <script src="api.js"></script>
+    <script src="map.js"></script>
+    <script src="heatmap.js"></script>
+    <script src="app.js"></script>
 </body>
+
 </html>

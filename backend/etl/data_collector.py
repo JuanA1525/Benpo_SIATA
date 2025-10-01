@@ -150,35 +150,35 @@ def collect_medicion_estacion(codigo_estacion):
 
         data = response.json()
 
-        # Arreglar conversión del timestamp
+        # Obtener y convertir timestamp
         date_raw = data.get('date', '0').strip()
-        print(f"    🕐 Estación {codigo_estacion}: timestamp_raw='{date_raw}'")
-
+        
         try:
             # Convertir a float primero, luego a int
             date_timestamp = int(float(date_raw))
-            print(f"    🕐 Timestamp convertido: {date_timestamp}")
         except (ValueError, TypeError):
             print(f"    ⚠️ Timestamp inválido para estación {codigo_estacion}: {date_raw}")
             return 'error'
 
-        # El timestamp viene en UTC, convertir a hora colombiana
+        # El timestamp viene en UTC, convertir a hora Colombia sumando 5 horas
         fecha_medicion_utc = datetime.fromtimestamp(date_timestamp, tz=timezone.utc)
-        now = datetime.now(tz=COLOMBIA_TZ)
+        fecha_medicion_colombia = fecha_medicion_utc
+        now_colombia = datetime.now(tz=COLOMBIA_TZ)
+
+        # Calcular diferencia en horas
+        diferencia_horas = (now_colombia.replace(tzinfo=None) - fecha_medicion_colombia.replace(tzinfo=None)).total_seconds() / 3600
 
         print(f"    📅 Estación {codigo_estacion}:")
-        print(f"        🌍 UTC: {fecha_medicion_utc}")
-        print(f"        ⏰ Ahora Colombia: {now}")
-
-        diferencia_horas = (now - fecha_medicion_utc).total_seconds() / 3600
+        print(f"        🕐 Medición Colombia: {fecha_medicion_colombia}")
+        print(f"        🕐 Ahora Colombia: {now_colombia}")
         print(f"        ⏱️ Diferencia: {diferencia_horas:.2f} horas")
 
-        # Filtrar estaciones con datos muy antiguos (más de 1 día)
+        # Filtrar datos muy antiguos (más de 24 horas)
         if diferencia_horas > 24:
             print(f"    🗑️ Estación {codigo_estacion} inactiva: {diferencia_horas:.1f} horas sin datos")
             return 'inactiva'
 
-        # Validar que no sea muy antiguo (más de 2 horas)
+        # Filtrar datos antiguos (más de 2 horas)
         if diferencia_horas > 2:
             print(f"    ⚠️ Datos antiguos para estación {codigo_estacion}: {diferencia_horas:.2f} horas")
             return 'antigua'
@@ -193,9 +193,6 @@ def collect_medicion_estacion(codigo_estacion):
             except (ValueError, TypeError):
                 return None
 
-        # Log de datos antes de limpiar
-        print(f"    📊 Datos crudos: t={data.get('t')}, h={data.get('h')}, p={data.get('p')}")
-
         datos_limpios = {
             't': clean_value(data.get('t')),
             'h': clean_value(data.get('h')),
@@ -206,8 +203,6 @@ def collect_medicion_estacion(codigo_estacion):
             'p1h': clean_value(data.get('p1h')),
             'p24h': clean_value(data.get('p24h'))
         }
-
-        print(f"    🧹 Datos limpios: t={datos_limpios['t']}, h={datos_limpios['h']}, p={datos_limpios['p']}")
 
         with get_db_cursor() as cursor:
             # Verificar si ya existe esta medición
@@ -221,7 +216,9 @@ def collect_medicion_estacion(codigo_estacion):
                 print(f"    🔄 Medición ya existe para estación {codigo_estacion}")
                 return 'existente'
 
-            # Insertar nueva medición
+            # Insertar nueva medición (convertir a UTC naive para PostgreSQL)
+            fecha_utc_naive = fecha_medicion_utc.replace(tzinfo=None)
+            
             cursor.execute("""
                 INSERT INTO mediciones (
                     estacion_codigo, date_timestamp, fecha_medicion,
@@ -230,7 +227,7 @@ def collect_medicion_estacion(codigo_estacion):
             """, (
                 codigo_estacion,
                 date_timestamp,
-                fecha_medicion.replace(tzinfo=None),  # Quitar timezone para PostgreSQL
+                fecha_utc_naive,  # Guardar en UTC naive
                 datos_limpios['t'],
                 datos_limpios['h'],
                 datos_limpios['p'],
