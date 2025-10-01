@@ -158,6 +158,7 @@ class MapManager {
         // Remove popup binding, we will handle hover tooltip
         marker.on('mouseover', () => this.showStationTooltip(marker, stationData));
         marker.on('mouseout', () => this.hideStationTooltip(marker));
+        marker.on('click', () => this.openStationHistory(info.codigo || info.id, stationData));
         return marker;
     }
 
@@ -364,6 +365,160 @@ class MapManager {
         toast.textContent = message;
         container.appendChild(toast);
         setTimeout(()=>{ toast.remove(); }, 5200);
+    }
+
+    async openStationHistory(stationId, stationData){
+        // Create container if not exists
+        let panel = document.getElementById('station-history-panel');
+        if(!panel){
+            panel = document.createElement('div');
+            panel.id = 'station-history-panel';
+            panel.className = 'station-history-panel';
+            document.body.appendChild(panel);
+        }
+        panel.innerHTML = `<div class="sh-inner loading">
+            <div class="sh-header">
+                <h4>${stationData?.info?.nombre || 'Estación'} (#${stationId})</h4>
+                <button class="sh-close" onclick="mapManager.closeStationHistory()">×</button>
+            </div>
+            <div class="sh-filters">
+                <label>Horas atrás <input type="number" id="sh-hours" min="1" max="240" value="24" /></label>
+                <label>Inicio <input type="date" id="sh-start" /></label>
+                <label>Fin <input type="date" id="sh-end" /></label>
+                <label>Métricas
+                    <select id="sh-metrics" multiple size="5">
+                        <option value="t" selected>Temperatura</option>
+                        <option value="h" selected>Humedad</option>
+                        <option value="p">Presión</option>
+                        <option value="ws">Viento (m/s)</option>
+                        <option value="p1h">Lluvia 1h</option>
+                        <option value="p24h">Lluvia 24h</option>
+                    </select>
+                </label>
+                <label>Intervalo
+                    <select id="sh-interval">
+                        <option value="none">Sin agrupar</option>
+                        <option value="30">30 min</option>
+                        <option value="60" selected>1 h</option>
+                        <option value="180">3 h</option>
+                        <option value="360">6 h</option>
+                        <option value="720">12 h</option>
+                        <option value="1440">24 h</option>
+                    </select>
+                </label>
+                <button class="sh-apply" onclick="mapManager.applyStationHistoryFilters(${stationId})">Aplicar</button>
+            </div>
+            <div class="sh-content"><div class="sh-loading-spinner"></div><p>Cargando histórico...</p></div>
+        </div>`;
+        panel.setAttribute('data-station', stationId);
+        panel.classList.add('visible');
+        await this.loadStationHistory(stationId);
+    }
+
+    async loadStationHistory(stationId, opts={}){
+        const panel = document.getElementById('station-history-panel');
+        if(!panel) return;
+        const content = panel.querySelector('.sh-content');
+        if(!content) return;
+        content.innerHTML = '<div class="sh-loading-spinner"></div><p>Cargando histórico...</p>';
+        try {
+            const {hoursBack, startDate, endDate} = opts;
+            const resp = await apiClient.getStationHistory(stationId, {hoursBack, startDate, endDate});
+            if(!resp.success){
+                content.innerHTML = `<p class="sh-error">${resp.error||'Error obteniendo datos'}</p>`;
+                return;
+            }
+            const rows = resp.data || [];
+            if(rows.length === 0){
+                content.innerHTML = '<p class="sh-empty">Sin datos para el filtro seleccionado.</p>';
+                return;
+            }
+            const metricsSel = this.getSelectedMetrics();
+            const interval = this.getSelectedInterval();
+            const processed = interval && interval !== 'none' ? this.aggregateRows(rows, parseInt(interval,10), metricsSel) : rows;
+            content.innerHTML = this.renderHistoryTable(processed, metricsSel, interval);
+        } catch(e){
+            console.error(e);
+            content.innerHTML = '<p class="sh-error">Error cargando histórico.</p>';
+        }
+    }
+
+    getSelectedMetrics(){
+        const sel = document.getElementById('sh-metrics');
+        if(!sel) return ['t','h'];
+        return Array.from(sel.options).filter(o=>o.selected).map(o=>o.value);
+    }
+
+    applyStationHistoryFilters(stationId){
+        const hoursInput = document.getElementById('sh-hours');
+        const start = document.getElementById('sh-start');
+        const end = document.getElementById('sh-end');
+        let hoursBack = hoursInput && hoursInput.value ? parseInt(hoursInput.value) : undefined;
+        const startDate = start && start.value ? start.value : undefined;
+        const endDate = end && end.value ? end.value : undefined;
+        if(startDate || endDate){
+            hoursBack = undefined; // rango absoluto tiene prioridad
+        }
+        this.loadStationHistory(stationId, {hoursBack, startDate, endDate});
+    }
+
+    getSelectedInterval(){
+        const sel = document.getElementById('sh-interval');
+        return sel ? sel.value : 'none';
+    }
+
+    aggregateRows(rows, minutes, metrics){
+        if(!minutes || !Array.isArray(rows)) return rows;
+        const bucketMap = new Map();
+        const bucketMs = minutes * 60000;
+        rows.forEach(r=>{
+            if(!r.fecha_medicion) return;
+            const ts = new Date(r.fecha_medicion).getTime();
+            const bucketStart = Math.floor(ts / bucketMs) * bucketMs;
+            let bucket = bucketMap.get(bucketStart);
+            if(!bucket){
+                bucket = { fecha_medicion: new Date(bucketStart).toISOString(), n:0 };
+                metrics.forEach(m=> bucket[m] = 0);
+                bucketMap.set(bucketStart, bucket);
+            }
+            bucket.n += 1;
+            metrics.forEach(m=>{
+                const v = r[m];
+                if(typeof v === 'number') bucket[m] += v;
+            });
+        });
+        const aggregated = Array.from(bucketMap.values()).map(b=>{
+            metrics.forEach(m=>{ if(b.n>0 && typeof b[m] === 'number') b[m] = b[m] / b.n; });
+            return b;
+        }).sort((a,b)=> new Date(b.fecha_medicion) - new Date(a.fecha_medicion));
+        return aggregated;
+    }
+
+    renderHistoryTable(rows, metrics, interval){
+        // Determine available metric columns
+        const metricLabels = { t:'Temp (°C)', h:'Hum (%)', p:'Pres (hPa)', ws:'Viento (m/s)', wd:'Dir (°)', p1h:'Lluvia 1h (mm)', p24h:'Lluvia 24h (mm)' };
+        const cols = ['fecha_medicion', ...metrics];
+        const withCount = interval && interval !== 'none';
+        if(withCount) cols.push('n');
+        let thead = '<thead><tr>' + cols.map(c=>{
+            if(c==='fecha_medicion') return '<th>Fecha</th>';
+            if(c==='n') return '<th>#</th>';
+            return `<th>${metricLabels[c]||c}</th>`;
+        }).join('') + '</tr></thead>';
+        const rowsHtml = rows.slice(0,500).map(r=>{
+            return '<tr>' + cols.map(c=>{
+                if(c === 'fecha_medicion') return `<td class="sh-date">${new Date(r[c]).toLocaleString()}</td>`;
+                if(c === 'n') return `<td>${r.n||0}</td>`;
+                const v = r[c];
+                return `<td>${(v==null||v==='')? '—' : (typeof v === 'number'? v.toFixed(2): v)}</td>`;
+            }).join('') + '</tr>';
+        }).join('');
+        return `<div class="sh-table-wrapper"><table class="sh-table">${thead}<tbody>${rowsHtml}</tbody></table></div>`;
+    }
+
+    closeStationHistory(){
+        const panel = document.getElementById('station-history-panel');
+        if(panel){ panel.classList.remove('visible'); setTimeout(()=> panel.remove(), 350); }
     }
 
     toggleHelp(){

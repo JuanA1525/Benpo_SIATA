@@ -41,6 +41,16 @@ class ApiClient {
         return await this.get('/stations/all-data');
     }
 
+    // Histórico de una estación (filtros opcionales)
+    async getStationHistory(stationId, {hoursBack, startDate, endDate, metrics} = {}) {
+        const params = new URLSearchParams();
+        if (hoursBack) params.append('hours_back', hoursBack);
+        if (startDate) params.append('start_date', startDate);
+        if (endDate) params.append('end_date', endDate);
+        // metrics filtrado en frontend; el backend devuelve todas las columnas
+        return await this.get(`/stations/${stationId}/history?${params.toString()}`);
+    }
+
     // Health check
     async healthCheck() {
         return await this.get('/health');

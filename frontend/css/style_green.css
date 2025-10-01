@@ -163,6 +163,32 @@ main { padding:2rem; max-width:1500px; margin:0 auto; }
 .leaflet-tooltip.station-tooltip { background:rgba(255,255,255,0.95); color:#134d30; border:1px solid #b6e9c9; border-radius:10px; padding:.55rem .7rem; box-shadow:0 6px 18px -4px rgba(0,0,0,.25); }
 .leaflet-tooltip.station-tooltip h3 { font-size:.75rem; margin:0 0 .25rem; color:#0f5132; }
 .leaflet-tooltip.station-tooltip p { margin:.12rem 0; font-size:.6rem; line-height:1.15; }
+/* Station history side panel */
+#station-history-panel { position:fixed; top:0; right:0; width:420px; max-width:100%; height:100%; background:linear-gradient(165deg,#0f5132 0%,#082d19 120%); color:#e8ffee; box-shadow:-6px 0 28px -8px rgba(0,0,0,0.55); z-index:3500; transform:translateX(100%); transition:transform .35s ease; display:flex; flex-direction:column; }
+#station-history-panel.visible { transform:translateX(0); }
+#station-history-panel .sh-inner { padding:1.2rem 1.3rem 1.4rem; display:flex; flex-direction:column; gap:.9rem; height:100%; overflow:hidden; }
+.sh-header { display:flex; align-items:center; justify-content:space-between; gap:.75rem; }
+.sh-header h4 { margin:0; font-size:1.05rem; letter-spacing:.5px; }
+.sh-close { background:rgba(255,255,255,0.15); border:1px solid rgba(255,255,255,0.25); color:#fff; width:34px; height:34px; border-radius:10px; cursor:pointer; font-size:1rem; display:flex; align-items:center; justify-content:center; transition:.25s; }
+.sh-close:hover { background:rgba(255,255,255,0.25); }
+.sh-filters { display:grid; grid-template-columns:repeat(auto-fit,minmax(110px,1fr)); gap:.55rem; background:rgba(255,255,255,0.07); padding:.7rem .75rem .8rem; border:1px solid rgba(255,255,255,0.12); border-radius:14px; }
+.sh-filters label { display:flex; flex-direction:column; gap:4px; font-size:.58rem; text-transform:uppercase; letter-spacing:.6px; font-weight:600; }
+.sh-filters input, .sh-filters select { background:rgba(255,255,255,0.15); border:1px solid rgba(255,255,255,0.25); color:#e8ffee; padding:6px 7px; border-radius:8px; font-size:.65rem; outline:none; }
+.sh-filters select[multiple] { height:84px; }
+.sh-apply { grid-column:1 / -1; background:linear-gradient(45deg,#198754,#2ecc71); border:none; padding:8px 14px; border-radius:12px; font-size:.7rem; font-weight:600; letter-spacing:.5px; cursor:pointer; color:#fff; box-shadow:0 4px 14px -4px rgba(0,0,0,0.45); }
+.sh-apply:hover { filter:brightness(1.07); }
+.sh-content { position:relative; flex:1 1 auto; background:rgba(0,0,0,0.25); border:1px solid rgba(255,255,255,0.12); border-radius:14px; padding:.8rem; overflow:auto; }
+.sh-loading-spinner { width:42px; height:42px; border:5px solid rgba(255,255,255,0.2); border-top-color:#2ecc71; border-radius:50%; animation:spin 1s linear infinite; margin:2.4rem auto .8rem; }
+.sh-content p { text-align:center; font-size:.72rem; letter-spacing:.5px; }
+.sh-error { color:#ffa8a8; }
+.sh-empty { opacity:.7; }
+.sh-table-wrapper { overflow:auto; max-height:100%; }
+.sh-table { width:100%; border-collapse:collapse; font-size:.62rem; }
+.sh-table th, .sh-table td { padding:.35rem .5rem; border-bottom:1px solid rgba(255,255,255,0.09); text-align:right; }
+.sh-table th:first-child, .sh-table td:first-child { text-align:left; }
+.sh-table th { position:sticky; top:0; background:#0f5132; z-index:1; }
+.sh-date { white-space:nowrap; }
+.custom-station-marker { cursor:pointer; }
 /* Responsive */
 @media (max-width:900px){ main { padding:1.2rem; } #map-tab .map-wrapper { height:calc(100vh - 210px);} }
 @media (max-width:768px){ header { flex-direction:column; align-items:flex-start; gap:.6rem;} nav { width:100%; justify-content:space-between;} .tab-content { padding:1.2rem; } .forecast-days { grid-template-columns:1fr; } .weather-info { grid-template-columns:1fr; } }
@@ -179,3 +205,26 @@ main { padding:2rem; max-width:1500px; margin:0 auto; }
 .map-toast { background:linear-gradient(145deg,#0e2818,#114327); padding:12px 18px; border-radius:14px; color:#d4ffe3; font-size:.8rem; letter-spacing:.5px; box-shadow:0 6px 18px rgba(0,0,0,0.55),0 0 0 1px rgba(255,255,255,0.05); opacity:0; transform:translateY(6px); animation:toast-in .55s ease forwards, toast-out .55s ease forwards 4.5s; }
 @keyframes toast-in { to { opacity:1; transform:translateY(0);} }
 @keyframes toast-out { to { opacity:0; transform:translateY(-4px);} }
+
+/* Interval selector minimal width */
+#sh-interval { min-width:90px; }
+
+/* Better contrast for selects & inputs in dark history panel */
+#station-history-panel .sh-filters select,
+#station-history-panel .sh-filters input[type=date],
+#station-history-panel .sh-filters input[type=number] {
+  background:rgba(255,255,255,0.92) !important;
+  color:#0f5132 !important;
+  border:1px solid #c6e8d4;
+}
+#station-history-panel .sh-filters select:focus,
+#station-history-panel .sh-filters input[type=date]:focus,
+#station-history-panel .sh-filters input[type=number]:focus {
+  outline:none;
+  box-shadow:0 0 0 2px var(--focus-ring);
+  border-color:#198754;
+}
+#station-history-panel .sh-filters select option {
+  background:#ffffff;
+  color:#0f5132;
+}
