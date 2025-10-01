@@ -15,34 +15,41 @@ body {
 
 /* Header */
 header {
-  background: rgba(255, 255, 255, 0.95);
+  background: rgba(63, 63, 63, 0.95);
   backdrop-filter: blur(10px);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-  padding: 1rem 0;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+  padding: 0.8rem 2rem;
   position: sticky;
   top: 0;
   z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  max-width: 100%;
 }
 
 .header-content {
-  text-align: center;
-  margin-bottom: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin: 0;
 }
 
 .header-content h1 {
-  font-size: 2.5rem;
+  font-size: 1.8rem;
   font-weight: 700;
   background: linear-gradient(45deg, #667eea, #764ba2);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
-  margin-bottom: 0.5rem;
+  margin: 0;
 }
 
 .subtitle {
   color: #666;
-  font-size: 1.1rem;
+  font-size: 0.9rem;
   font-weight: 300;
+  margin: 0;
 }
 
 /* Navigation */
