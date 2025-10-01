@@ -190,6 +190,67 @@ main {
   text-align: center;
 }
 
+/* Advanced Heatmap Controls */
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 0.6rem;
+}
+.form-grid.small-cols {
+  grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
+}
+.form-grid label {
+  display: flex;
+  flex-direction: column;
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #555;
+  gap: 3px;
+  font-weight: 600;
+}
+.input-select, .input-date, .input-number {
+  appearance: none;
+  border: 1px solid #dadce5;
+  border-radius: 10px;
+  padding: 6px 8px;
+  font-size: 0.75rem;
+  background: #fff;
+  font-weight: 600;
+  color: #333;
+  outline: none;
+  transition: border-color .2s, box-shadow .2s;
+}
+.input-select:focus, .input-date:focus, .input-number:focus {
+  border-color: #667eea;
+  box-shadow: 0 0 0 2px rgba(102,126,234,0.2);
+}
+.checkbox-inline {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: #555;
+}
+.buttons-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(50px,1fr));
+  gap: 0.5rem;
+}
+.meta-info {
+  background: #f4f6fb;
+  border: 1px solid #e3e8f5;
+  padding: 0.6rem 0.75rem;
+  border-radius: 10px;
+  font-size: 0.65rem;
+  line-height: 1.2;
+  color: #333;
+  font-weight: 600;
+  display: grid;
+  gap: 2px;
+}
+
 .control-section {
   margin-bottom: 1.5rem;
 }

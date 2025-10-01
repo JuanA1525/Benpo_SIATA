@@ -45,6 +45,20 @@ class ApiClient {
     async healthCheck() {
         return await this.get('/health');
     }
+
+    // Heatmap raw aggregated points
+    async getHeatmapData(parameter, startDate, endDate, agg = 'mean') {
+        const params = new URLSearchParams();
+        if (parameter) params.append('parameter', parameter);
+        if (startDate) params.append('start_date', startDate);
+        if (endDate) params.append('end_date', endDate);
+        if (agg) params.append('agg', agg);
+        const resp = await this.get(`/heatmap?${params.toString()}`);
+        if (resp && resp.success) {
+            return resp.points || [];
+        }
+        return [];
+    }
 }
 
 // Instancia global del cliente API

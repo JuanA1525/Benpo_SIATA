@@ -1,3 +1,50 @@
+## Endpoints añadidos / actualizados
+
+Base URL: `http://localhost:5000/api`
+
+| Endpoint | Método | Descripción |
+|----------|--------|-------------|
+| `/forecasts` | GET | Pronósticos por zona desde BD |
+| `/forecasts/<zona>` | GET | Pronóstico detallado de una zona |
+| `/stations` | GET | Listado estaciones activas |
+| `/stations/all-data` | GET | Última medición de todas las estaciones (formato compatible con frontend) |
+| `/stations/<id>/data` | GET | Última medición de una estación |
+| `/stations/<id>/history` | GET | Histórico (params: `hours_back` o `start_date`, `end_date`) |
+| `/heatmap` | GET | Puntos agregados para heatmap (`parameter`, `start_date`, `end_date`, `hours_back`, `agg`) |
+| `/heatmap/interpolate` | GET | Grilla interpolada (requiere SciPy) |
+
+Parámetros válidos para `parameter`: `temperature`, `humidity`, `pressure`, `wind_speed`, `precipitation`.
+
+## Scheduler / ETL
+
+El ETL se ejecuta cada 10 minutos mediante APScheduler y realiza:
+1. Recolección de pronósticos WRF (tabla `pronosticos`).
+2. Actualización de metadatos de estaciones (tabla `estaciones`).
+3. Recolección de mediciones recientes filtrando:
+   - Diferencia horaria > 24h => estación inactiva (no se guarda nueva medición)
+   - Diferencia 2–24h => se ignoran mediciones antiguas
+   - Valores -999 / outliers (< -900) => se tratan como NULL
+
+Para deshabilitar el scheduler en desarrollo (evitar duplicado con auto-reload):
+
+```
+export DISABLE_SCHEDULER=1  # (Linux/macOS)
+set DISABLE_SCHEDULER=1     # (Windows CMD)
+```
+
+## Plan de despliegue AWS (resumen)
+
+1. Construir imágenes Docker con etiquetas versionadas.
+2. Subir a Amazon ECR.
+3. Provisionar en ECS Fargate o EC2:
+   - Servicio `postgres` recomendado migrar a RDS (PostgreSQL).
+   - Servicio `backend` (Flask + ETL scheduler) – variable `DATABASE_URL` apuntando a RDS.
+   - Servicio `frontend` servido por Nginx (o migrar a S3 + CloudFront).
+4. Programar tareas ETL dedicadas (opcional) usando AWS EventBridge + AWS ECS task si se quisiera desacoplar del backend web.
+5. Observabilidad: CloudWatch Logs + métricas custom (pendiente de instrumentar).
+
+Ver sección más abajo (Infraestructura) para detalle completo por fases.
+
 # 🌦️ SIATA Dashboard - Benpo
 
 Sistema moderno de visualización de datos meteorológicos del SIATA (Sistema de Alerta Temprana del Valle de Aburrá).

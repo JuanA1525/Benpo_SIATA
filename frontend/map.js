@@ -5,52 +5,76 @@ class MapManager {
         this.stationsData = {};
         this.heatmapLayer = null;
         this.currentHeatmapType = 'temperature';
+        this.currentRawPoints = [];
+        this.interpolated = false;
+        this.lastHeatmapMeta = {};
     }
 
     initMap() {
-        // Inicializar mapa centrado en Medellín
         this.map = L.map('map').setView([6.2442, -75.5812], 11);
-
-        // Agregar capa de OpenStreetMap
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '© OpenStreetMap contributors'
         }).addTo(this.map);
-
-        // Crear controles del heatmap
         this.createHeatmapControls();
-
-        // Cargar datos de estaciones
         this.loadStationsData();
     }
 
     createHeatmapControls() {
+        const today = new Date();
+        const ymd = d => d.toISOString().split('T')[0];
+        const endDefault = ymd(today);
+        const startDefault = ymd(new Date(today.getTime() - 6 * 3600 * 1000));
         const controlsHTML = `
             <div class="heatmap-controls">
-                <h3>🗺️ Controles del Mapa</h3>
-                
-                <div class="control-section">
-                    <h4>Heatmap</h4>
-                    <div class="heatmap-buttons">
-                        <button class="heatmap-btn active" data-type="temperature" onclick="mapManager.showHeatmap('temperature')">
-                            🌡️ Temperatura
-                        </button>
-                        <button class="heatmap-btn" data-type="humidity" onclick="mapManager.showHeatmap('humidity')">
-                            💧 Humedad
-                        </button>
-                        <button class="heatmap-btn clear" onclick="mapManager.clearHeatmap()">
-                            ❌ Limpiar
-                        </button>
-                    </div>
+                <h3>🗺️ Heatmap & Estaciones</h3>
+                <div class="control-section form-grid">
+                    <label>Parámetro
+                        <select id="hm-parameter" class="input-select">
+                            <option value="temperature">Temperatura (°C)</option>
+                            <option value="humidity">Humedad (%)</option>
+                            <option value="precipitation">Precipitación (mm 1h)</option>
+                            <option value="pressure">Presión (hPa)</option>
+                            <option value="wind_speed">Viento (m/s)</option>
+                        </select>
+                    </label>
+                    <label>Agregación
+                        <select id="hm-agg" class="input-select">
+                            <option value="mean">Promedio</option>
+                            <option value="max">Máx</option>
+                            <option value="min">Mín</option>
+                        </select>
+                    </label>
                 </div>
-                
-                <div class="control-section">
-                    <h4>Estaciones</h4>
-                    <button class="control-btn" onclick="mapManager.refreshData()">
-                        🔄 Actualizar Datos
-                    </button>
+                <div class="control-section form-grid">
+                    <label>Horas atrás
+                        <input id="hm-hours-back" class="input-number" type="number" min="1" max="48" placeholder="6" />
+                    </label>
+                    <label>Inicio
+                        <input id="hm-start-date" class="input-date" type="date" value="${startDefault}" />
+                    </label>
+                    <label>Fin
+                        <input id="hm-end-date" class="input-date" type="date" value="${endDefault}" />
+                    </label>
                 </div>
-                
-                <div id="heatmap-legend" class="heatmap-legend" style="display: none;">
+                <div class="control-section form-grid small-cols">
+                    <label class="checkbox-inline">
+                        <input id="hm-interpolate" type="checkbox" /> Interpolar
+                    </label>
+                    <label class="checkbox-inline">
+                        <input id="hm-toggle-markers" type="checkbox" checked /> Marcadores
+                    </label>
+                </div>
+                <div class="control-section buttons-row">
+                    <button class="heatmap-btn" onclick="mapManager.generateAdvancedHeatmap()">⚡ Generar</button>
+                    <button class="heatmap-btn" onclick="mapManager.showQuick('temperature')">🌡️</button>
+                    <button class="heatmap-btn" onclick="mapManager.showQuick('humidity')">💧</button>
+                    <button class="heatmap-btn clear" onclick="mapManager.clearHeatmap()">❌</button>
+                </div>
+                <div class="control-section">
+                    <button class="control-btn" onclick="mapManager.refreshData()">🔄 Actualizar Estaciones</button>
+                </div>
+                <div class="meta-info" id="hm-meta" style="display:none;"></div>
+                <div id="heatmap-legend" class="heatmap-legend" style="display:none;">
                     <h4>Leyenda</h4>
                     <div class="legend-gradient"></div>
                     <div class="legend-labels">
@@ -58,14 +82,10 @@ class MapManager {
                         <span class="legend-max"></span>
                     </div>
                 </div>
-            </div>
-        `;
-
-        // Agregar controles al mapa
+            </div>`;
         const controlsDiv = document.createElement('div');
         controlsDiv.innerHTML = controlsHTML;
         controlsDiv.className = 'map-controls-container';
-        
         const mapContainer = document.getElementById('map');
         if (mapContainer && mapContainer.parentNode) {
             mapContainer.parentNode.insertBefore(controlsDiv, mapContainer);
@@ -74,330 +94,210 @@ class MapManager {
 
     async loadStationsData() {
         try {
-            console.log('Cargando datos de estaciones...');
             const response = await apiClient.getAllStationsData();
             if (response.success) {
                 this.stationsData = response.data;
-                console.log('Datos de estaciones cargados:', Object.keys(this.stationsData).length, 'estaciones');
                 this.addStationsToMap();
-                // Mostrar heatmap de temperatura por defecto
-                this.showHeatmap('temperature');
+                this.showQuick('temperature');
             } else {
-                console.error('Error loading stations data:', response.error);
-                this.showHeatmapMessage('Error al cargar datos de estaciones');
+                this.showHeatmapMessage('Error al cargar estaciones');
             }
-        } catch (error) {
-            console.error('Error loading stations data:', error);
-            this.showHeatmapMessage('Error de conexión con el servidor');
+        } catch (e) {
+            console.error(e);
+            this.showHeatmapMessage('Error conexión backend');
         }
     }
 
     addStationsToMap() {
-        // Limpiar marcadores existentes
         this.clearMarkers();
-
-        if (!this.stationsData || typeof this.stationsData !== 'object') {
-            console.warn('No hay datos de estaciones válidos');
-            return;
-        }
-
-        Object.keys(this.stationsData).forEach(stationId => {
-            const stationData = this.stationsData[stationId];
-            if (stationData && stationData.info) {
-                const marker = this.createStationMarker(stationData);
+        if (!this.stationsData || typeof this.stationsData !== 'object') return;
+        Object.keys(this.stationsData).forEach(id => {
+            const st = this.stationsData[id];
+            if (st && st.info) {
+                const marker = this.createStationMarker(st);
                 if (marker) {
                     this.markers.push(marker);
                     marker.addTo(this.map);
                 }
             }
         });
-
-        console.log(`Agregados ${this.markers.length} marcadores al mapa`);
     }
 
     createStationMarker(stationData) {
         const info = stationData.info;
-        const lat = info.latitud;
-        const lng = info.longitud;
-
-        if (!lat || !lng) return null;
-
-        // Crear icono personalizado basado en el tipo de datos disponibles
-        const hasTemp = stationData.t && stationData.t !== '-999';
-        const hasHumidity = stationData.h && stationData.h !== '-999';
-        const hasRain = stationData.p1h !== undefined || stationData['1h'] !== undefined;
-
-        let iconColor = '#3498db'; // Azul por defecto
-        if (hasTemp && hasHumidity && hasRain) iconColor = '#27ae60'; // Verde completo
-        else if (hasTemp || hasHumidity) iconColor = '#f39c12'; // Naranja parcial
-
+        if (!info.latitud || !info.longitud) return null;
+        const hasTemp = stationData.t != null;
+        const hasHumidity = stationData.h != null;
+        const hasRain = stationData.p1h != null;
+        let iconColor = '#3498db';
+        if (hasTemp && hasHumidity && hasRain) iconColor = '#27ae60';
+        else if (hasTemp || hasHumidity) iconColor = '#f39c12';
         const customIcon = L.divIcon({
             className: 'custom-station-marker',
-            html: `<div style="background-color: ${iconColor}; width: 12px; height: 12px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>`,
-            iconSize: [16, 16],
-            iconAnchor: [8, 8]
+            html: `<div style="background-color:${iconColor};width:12px;height:12px;border-radius:50%;border:2px solid #fff;box-shadow:0 2px 4px rgba(0,0,0,0.3);"></div>`,
+            iconSize: [16,16], iconAnchor:[8,8]
         });
-
-        const marker = L.marker([lat, lng], { icon: customIcon });
-
-        // Crear popup con información de la estación
-        const popupContent = this.createPopupContent(stationData);
-        marker.bindPopup(popupContent);
-
+        const marker = L.marker([info.latitud, info.longitud], {icon: customIcon});
+        marker.bindPopup(this.createPopupContent(stationData));
         return marker;
     }
 
     createPopupContent(stationData) {
         const info = stationData.info;
-
-        let content = `
-            <div class="station-popup">
-                <h3>${info.nombre}</h3>
-                <p><strong>📍 Ciudad:</strong> ${info.ciudad}</p>
-                <p><strong>🏘️ Barrio:</strong> ${info.barrio}</p>
-                <p><strong>🔢 Código:</strong> ${info.codigo}</p>
-                <hr>
-        `;
-
-        // Agregar datos de sensores si están disponibles
-        if (stationData.t && stationData.t !== '-999') {
-            content += `<p><strong>🌡️ Temperatura:</strong> ${stationData.t}°C</p>`;
-        }
-        if (stationData.h && stationData.h !== '-999') {
-            content += `<p><strong>💧 Humedad:</strong> ${stationData.h}%</p>`;
-        }
-        if (stationData.p && stationData.p !== '-999') {
-            content += `<p><strong>🌫️ Presión:</strong> ${stationData.p} hPa</p>`;
-        }
-        if (stationData.p1h !== undefined) {
-            content += `<p><strong>🌧️ Lluvia 1h:</strong> ${stationData.p1h} mm</p>`;
-        }
-        if (stationData.p24h !== undefined) {
-            content += `<p><strong>🌧️ Lluvia 24h:</strong> ${stationData.p24h} mm</p>`;
-        }
-
-        // Formato alternativo para algunos sensores
-        if (stationData['1h'] !== undefined) {
-            content += `<p><strong>🌧️ Lluvia 1h:</strong> ${stationData['1h']} mm</p>`;
-        }
-        if (stationData['24h'] !== undefined) {
-            content += `<p><strong>🌧️ Lluvia 24h:</strong> ${stationData['24h']} mm</p>`;
-        }
-
-        content += `
-                <p><strong>⏰ Última actualización:</strong> ${new Date(stationData.timestamp).toLocaleString()}</p>
-            </div>
-        `;
-
-        return content;
+        const fmt = (v, suf='') => (v==null||isNaN(v)? '—' : `${v}${suf}`);
+        return `<div class="station-popup">
+            <h3>${info.nombre}</h3>
+            <p><strong>📍 Ciudad:</strong> ${info.ciudad||''}</p>
+            <p><strong>🔢 Código:</strong> ${info.codigo}</p>
+            <hr/>
+            <p><strong>🌡️ Temp:</strong> ${fmt(stationData.t,'°C')}</p>
+            <p><strong>💧 Humedad:</strong> ${fmt(stationData.h,'%')}</p>
+            <p><strong>🌫️ Presión:</strong> ${fmt(stationData.p,' hPa')}</p>
+            <p><strong>🌧️ Lluvia 1h:</strong> ${fmt(stationData.p1h,' mm')}</p>
+            <p><strong>🌧️ Lluvia 24h:</strong> ${fmt(stationData.p24h,' mm')}</p>
+            <p><strong>⏰ Actualización:</strong> ${stationData.timestamp? new Date(stationData.timestamp).toLocaleString(): '—'}</p>
+        </div>`;
     }
 
-    showHeatmap(type) {
+    showQuick(type) {
         this.currentHeatmapType = type;
-        
-        // Actualizar botones activos
-        document.querySelectorAll('.heatmap-btn').forEach(btn => {
-            btn.classList.remove('active');
-        });
-        const activeBtn = document.querySelector(`[data-type="${type}"]`);
-        if (activeBtn) {
-            activeBtn.classList.add('active');
-        }
-
-        // Limpiar heatmap anterior
+        this.interpolated = false;
         this.clearHeatmap();
-
-        // Crear datos del heatmap
-        const heatmapData = this.generateHeatmapData(type);
-        
+        const heatmapData = this.generateQuickHeatmapData(type);
         if (heatmapData.length === 0) {
-            this.showHeatmapMessage('No hay datos suficientes para generar el mapa de calor');
+            this.showHeatmapMessage('Sin datos para heatmap rápido');
             return;
         }
+        this.renderHeatLayer(heatmapData, type, { dynamicLegend: true });
+    }
 
-        // Verificar si L.heatLayer está disponible
-        if (typeof L.heatLayer !== 'function') {
-            console.error('Leaflet.heat plugin no está cargado');
-            this.showHeatmapMessage('Plugin de heatmap no disponible');
-            return;
-        }
-
-        // Crear el heatmap
+    async generateAdvancedHeatmap() {
         try {
-            this.heatmapLayer = L.heatLayer(heatmapData, {
-                radius: 40,
-                blur: 25,
-                maxZoom: 15,
-                gradient: this.getHeatmapGradient(type)
-            }).addTo(this.map);
-
-            // Mostrar leyenda
-            this.showHeatmapLegend(type, heatmapData);
-            console.log(`Heatmap de ${type} creado con ${heatmapData.length} puntos`);
-        } catch (error) {
-            console.error('Error creando heatmap:', error);
-            this.showHeatmapMessage('Error al crear el mapa de calor');
+            const parameter = document.getElementById('hm-parameter').value;
+            const agg = document.getElementById('hm-agg').value;
+            const hoursBack = document.getElementById('hm-hours-back').value;
+            const startDate = document.getElementById('hm-start-date').value;
+            const endDate = document.getElementById('hm-end-date').value;
+            const interpolate = document.getElementById('hm-interpolate').checked;
+            const showMarkers = document.getElementById('hm-toggle-markers').checked;
+            if (!showMarkers) this.clearMarkers(); else if (this.markers.length===0) this.addStationsToMap();
+            this.showHeatmapMessage('Generando...');
+            this.currentHeatmapType = parameter; this.interpolated = interpolate; this.clearHeatmap();
+            const qs = new URLSearchParams();
+            qs.append('parameter', parameter); qs.append('agg', agg);
+            if (hoursBack) qs.append('hours_back', hoursBack); else { if (startDate) qs.append('start_date', startDate); if (endDate) qs.append('end_date', endDate);}
+            const endpoint = interpolate ? `/api/heatmap/interpolate?${qs.toString()}&grid_size=55` : `/api/heatmap?${qs.toString()}`;
+            const resp = await fetch(endpoint);
+            if (!resp.ok) throw new Error('HTTP '+resp.status);
+            const json = await resp.json();
+            if (!json.success) throw new Error(json.error||'Error backend');
+            const points = interpolate ? (json.interpolated_points||[]) : (json.points||[]);
+            if (points.length === 0) { this.showHeatmapMessage('Sin puntos'); return; }
+            this.currentRawPoints = points;
+            const values = points.map(p=>p.value).filter(v=>typeof v==='number');
+            const min = Math.min(...values), max = Math.max(...values);
+            const layerData = points.map(p=>[p.latitude, p.longitude, this.minMaxNormalize(p.value, min, max)]);
+            this.renderHeatLayer(layerData, parameter, {min, max, dynamicLegend:true});
+            this.updateMetaInfo({parameter, agg, count: points.length, min, max, interpolate});
+        } catch (e) {
+            console.error(e);
+            this.showHeatmapMessage('Error generando heatmap');
         }
     }
 
-    generateHeatmapData(type) {
-        const data = [];
-        
-        if (!this.stationsData || typeof this.stationsData !== 'object') {
-            console.warn('No hay datos de estaciones para generar heatmap');
-            return data;
-        }
-        
-        Object.values(this.stationsData).forEach(station => {
-            if (!station || !station.info || !station.info.latitud || !station.info.longitud) {
-                return;
-            }
-            
-            let value;
-            switch (type) {
-                case 'temperature':
-                    value = station.t && station.t !== '-999' ? parseFloat(station.t) : null;
-                    break;
-                case 'humidity':
-                    value = station.h && station.h !== '-999' ? parseFloat(station.h) : null;
-                    break;
-                default:
-                    return;
-            }
+    updateMetaInfo(meta) {
+        this.lastHeatmapMeta = meta;
+        const el = document.getElementById('hm-meta');
+        if (!el) return; el.style.display='block';
+        el.innerHTML = `<div><strong>${this.prettyParam(meta.parameter)}</strong> (${meta.agg}) ${meta.interpolate? '• Interpolado':''}</div>
+                        <div>Puntos: ${meta.count}</div>
+                        <div>Rango: ${meta.min.toFixed(2)} – ${meta.max.toFixed(2)} ${this.getUnits(meta.parameter)}</div>`;
+    }
 
-            if (value !== null && !isNaN(value)) {
-                data.push([
-                    parseFloat(station.info.latitud),
-                    parseFloat(station.info.longitud),
-                    this.normalizeValue(value, type)
-                ]);
+    minMaxNormalize(v,min,max){ if(max===min) return .5; return (v-min)/(max-min); }
+
+    generateQuickHeatmapData(type){
+        const data=[]; if(!this.stationsData) return data;
+        Object.values(this.stationsData).forEach(st=>{
+            if(!st||!st.info) return; const lat=st.info.latitud, lon=st.info.longitud; if(!lat||!lon) return;
+            let val=null; switch(type){
+                case 'temperature': val=st.t!=null? parseFloat(st.t): null; break;
+                case 'humidity': val=st.h!=null? parseFloat(st.h): null; break;
+                case 'precipitation': val=st.p1h!=null? parseFloat(st.p1h): null; break;
+                case 'pressure': val=st.p!=null? parseFloat(st.p): null; break;
+                case 'wind_speed': val=st.ws!=null? parseFloat(st.ws): null; break;
+                default: return;
             }
+            if(val!=null && !isNaN(val)) data.push([parseFloat(lat), parseFloat(lon), this.normalizeForType(val,type)]);
         });
-
-        console.log(`Generados ${data.length} puntos para heatmap de ${type}`);
         return data;
     }
 
-    normalizeValue(value, type) {
-        // Normalizar valores para el heatmap (0-1)
-        switch (type) {
-            case 'temperature':
-                // Temperatura típica en Medellín: 15-35°C
-                return Math.max(0, Math.min(1, (value - 15) / 20));
-            case 'humidity':
-                // Humedad: 0-100%
-                return Math.max(0, Math.min(1, value / 100));
-            default:
-                return 0.5;
+    normalizeForType(value,type){
+        const clamp=(v,min,max)=>Math.max(min,Math.min(max,v));
+        switch(type){
+            case 'temperature': return clamp((value-15)/20,0,1);
+            case 'humidity': return clamp(value/100,0,1);
+            case 'precipitation': return clamp(value/30,0,1);
+            case 'pressure': return clamp((value-900)/130,0,1);
+            case 'wind_speed': return clamp(value/15,0,1);
+            default: return .5;
         }
     }
 
-    getHeatmapGradient(type) {
-        switch (type) {
-            case 'temperature':
-                return {
-                    0.0: '#0000ff',  // Azul (frío)
-                    0.3: '#00ffff',  // Cian
-                    0.5: '#00ff00',  // Verde
-                    0.7: '#ffff00',  // Amarillo
-                    0.9: '#ff8000',  // Naranja
-                    1.0: '#ff0000'   // Rojo (caliente)
-                };
-            case 'humidity':
-                return {
-                    0.0: '#8B4513',  // Marrón (seco)
-                    0.2: '#DAA520',  // Dorado
-                    0.4: '#FFFF00',  // Amarillo
-                    0.6: '#00FF00',  // Verde
-                    0.8: '#0080FF',  // Azul claro
-                    1.0: '#0000FF'   // Azul (húmedo)
-                };
-            default:
-                return {};
+    renderHeatLayer(data,type,opts={}){
+        if(typeof L.heatLayer !== 'function'){ this.showHeatmapMessage('Leaflet.heat no disponible'); return; }
+        this.clearHeatmap();
+        this.heatmapLayer = L.heatLayer(data, { radius: this.interpolated? 30:45, blur: 28, maxZoom: 15, gradient: this.getHeatmapGradient(type)}).addTo(this.map);
+        if(opts.dynamicLegend){ this.showDynamicLegend(type, opts.min, opts.max); }
+    }
+
+    showDynamicLegend(type,min,max){
+        const legend=document.getElementById('heatmap-legend'); if(!legend) return; legend.style.display='block';
+        if(min==null||max==null){
+            switch(type){
+                case 'temperature': min=15; max=35; break;
+                case 'humidity': min=0; max=100; break;
+                case 'precipitation': min=0; max=30; break;
+                case 'pressure': min=900; max=1030; break;
+                case 'wind_speed': min=0; max=15; break;
+                default: min=0; max=1; break;}
+        }
+        const gradient=this.getHeatmapGradient(type); const colors=Object.values(gradient);
+         legend.querySelector('.legend-gradient').style.background=`linear-gradient(to right, ${colors.join(', ')})`;
+        legend.querySelector('.legend-min').textContent=`${min.toFixed(1)} ${this.getUnits(type)}`;
+        legend.querySelector('.legend-max').textContent=`${max.toFixed(1)} ${this.getUnits(type)}`;
+    }
+
+    getUnits(type){ return {temperature:'°C', humidity:'%', precipitation:'mm', pressure:'hPa', wind_speed:'m/s'}[type]||''; }
+    prettyParam(type){ return {temperature:'Temperatura', humidity:'Humedad', precipitation:'Precipitación', pressure:'Presión', wind_speed:'Viento'}[type]||type; }
+
+    getHeatmapGradient(type){
+        switch(type){
+            case 'temperature': return {0.0:'#0000ff',0.25:'#00bfff',0.5:'#00ff6e',0.7:'#ffff00',0.9:'#ff8000',1.0:'#ff0000'};
+            case 'humidity': return {0.0:'#8B4513',0.2:'#DAA520',0.4:'#FFFF66',0.6:'#00FF66',0.8:'#3399FF',1.0:'#0000FF'};
+            case 'precipitation': return {0.0:'#ffffff',0.2:'#b3e5fc',0.4:'#4fc3f7',0.6:'#0288d1',0.8:'#01579b',1.0:'#002f6c'};
+            case 'pressure': return {0.0:'#4a148c',0.3:'#6a1b9a',0.5:'#1565c0',0.7:'#26a69a',0.85:'#ffee58',1.0:'#ef6c00'};
+            case 'wind_speed': return {0.0:'#e0f7fa',0.2:'#80deea',0.4:'#26c6da',0.6:'#00acc1',0.8:'#00838f',1.0:'#004d40'};
+            default: return {0.0:'#ffffff',1.0:'#000000'};
         }
     }
 
-    showHeatmapLegend(type, data) {
-        const legend = document.getElementById('heatmap-legend');
-        if (!legend) return;
-
-        const values = data.map(point => point[2]);
-        const minValue = Math.min(...values);
-        const maxValue = Math.max(...values);
-
-        let unit, minLabel, maxLabel;
-        switch (type) {
-            case 'temperature':
-                unit = '°C';
-                minLabel = '15°C';
-                maxLabel = '35°C';
-                break;
-            case 'humidity':
-                unit = '%';
-                minLabel = '0%';
-                maxLabel = '100%';
-                break;
-        }
-
-        const gradient = this.getHeatmapGradient(type);
-        const gradientColors = Object.values(gradient);
-        
-        legend.querySelector('.legend-gradient').style.background = 
-            `linear-gradient(to right, ${gradientColors.join(', ')})`;
-        legend.querySelector('.legend-min').textContent = minLabel;
-        legend.querySelector('.legend-max').textContent = maxLabel;
-        
-        legend.style.display = 'block';
-    }
-
-    showHeatmapMessage(message) {
-        // Mostrar mensaje temporal
-        const messageDiv = document.createElement('div');
-        messageDiv.className = 'heatmap-message';
-        messageDiv.textContent = message;
-        messageDiv.style.cssText = `
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            background: rgba(0,0,0,0.8);
-            color: white;
-            padding: 10px;
-            border-radius: 5px;
-            z-index: 1000;
-        `;
-        
+    showHeatmapMessage(message){
+        const messageDiv=document.createElement('div');
+        messageDiv.className='heatmap-message';
+        messageDiv.textContent=message;
+        messageDiv.style.cssText='position:absolute;top:10px;right:10px;background:rgba(0,0,0,0.8);color:#fff;padding:10px;border-radius:5px;z-index:1000;';
         document.getElementById('map').appendChild(messageDiv);
-        setTimeout(() => messageDiv.remove(), 3000);
+        setTimeout(()=>messageDiv.remove(),3000);
     }
 
-    clearHeatmap() {
-        if (this.heatmapLayer) {
-            this.map.removeLayer(this.heatmapLayer);
-            this.heatmapLayer = null;
-        }
-        
-        const legend = document.getElementById('heatmap-legend');
-        if (legend) {
-            legend.style.display = 'none';
-        }
-        
-        // Remover clase active de botones
-        document.querySelectorAll('.heatmap-btn').forEach(btn => {
-            btn.classList.remove('active');
-        });
+    clearHeatmap(){
+        if(this.heatmapLayer){ this.map.removeLayer(this.heatmapLayer); this.heatmapLayer=null; }
+        const legend=document.getElementById('heatmap-legend'); if(legend) legend.style.display='none';
     }
-
-    clearMarkers() {
-        this.markers.forEach(marker => {
-            this.map.removeLayer(marker);
-        });
-        this.markers = [];
-    }
-
-    refreshData() {
-        this.loadStationsData();
-    }
+    clearMarkers(){ this.markers.forEach(m=>this.map.removeLayer(m)); this.markers=[]; }
+    refreshData(){ this.loadStationsData(); }
 }
 
-// Instancia global
 const mapManager = new MapManager();
